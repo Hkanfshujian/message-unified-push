@@ -1,8 +1,0 @@
-https://unipush.ops.dachensky.com/auth/oidc/login
-https://sso.dachensky.com/login/oauth/authorize?client_id=7eb9cad71b0dc0280b7e&nonce=n_1775116419035186031&redirect_uri=https%3A%2F%2Funipush.ops.dachensky.com%2Fauth%2Foidc%2Fcallback&response_type=code&scope=openid+profile+email&state=1775116419035180520_14.145.160.246
-https://unipush.ops.dachensky.com/auth/oidc/callback?code=9628aa58da985c467d36&state=1775116419035180520_14.145.160.246
-chrome-extension://haklpcemfcccpoeaibpbgacinnbfafbl/adapter.js
-chrome-extension://oikmahiipjniocckomdccmplodldodja/normalize.css
-chrome-extension://oikmahiipjniocckomdccmplodldodja/blueprint.css
-chrome-extension://oikmahiipjniocckomdccmplodldodja/blueprint-select.css
-chrome-extension://oikmahiipjniocckomdccmplodldodja/cropper.css

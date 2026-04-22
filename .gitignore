@@ -3,6 +3,7 @@
 #
 .gitlab-ci.yml
 .releaserc
+logs/*
 # Binaries for programs and plugins
 *.exe
 *.exe~

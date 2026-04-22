@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="ops-message-unified-push logo">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0ea5e9"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="224" height="224" rx="56" fill="url(#bg)"/>
+  <path d="M64 128c0-35.3 28.7-64 64-64 22.3 0 42.8 11.4 54.5 30.1l-24.2 15.1c-6.5-10.3-17.8-16.5-30.3-16.5-19.6 0-35.4 15.8-35.4 35.3s15.8 35.3 35.4 35.3c12.6 0 23.9-6.2 30.3-16.5l24.2 15.1C170.8 180.6 150.3 192 128 192c-35.3 0-64-28.7-64-64z" fill="#ffffff"/>
+  <path d="M154 98h36l-24.2 30.3L190 158h-36l-24.2-29.7z" fill="#ffffff" opacity="0.96"/>
+</svg>

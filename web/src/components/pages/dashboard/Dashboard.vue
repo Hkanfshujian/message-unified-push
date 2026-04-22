@@ -1,0 +1,535 @@
+<script setup lang="ts">
+import StatCard from '@/components/pages/dashboard/CardNum.vue'
+import { FileTextIcon, SendIcon, CheckCircleIcon, XCircleIcon } from 'lucide-vue-next'
+// import { LineChart } from "@/components/ui/chart-line"
+import { onMounted, reactive } from 'vue';
+import { request } from '@/api/api';
+import { toast } from 'vue-sonner';
+// import VueApexCharts from 'vue3-apexcharts'
+import ApexCharts from 'apexcharts'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+
+interface SendData {
+  day: string
+  day_failed_num: number
+  day_succ_num: number
+  num: number
+  succ_num: number
+}
+interface CateData {
+  count_num: number
+  way_name: string
+}
+
+let state = reactive({
+  trendDays: 30,
+  basicData: {
+    message_total_num: 0,
+    today_total_num: 0,
+    today_succ_num: 0,
+    today_failed_num: 0,
+  },
+  trendData: {
+    latest_send_data: [] as SendData[] | null,
+  },
+  channelData: {
+    way_cate_data: [] as CateData[] | null,
+  },
+  loading: {
+    basic: false,
+    trend: false,
+    channels: false,
+  }
+});
+
+const TOKEN_ERROR_CODES = [20001, 20002, 20003, 20004, 20005]
+
+const shouldSilenceAuthError = (payload: any) => {
+  if (!payload) return false
+  const status = payload?.status || payload?.response?.status
+  if (status === 401) return true
+  const code = payload?.data?.code || payload?.response?.data?.code
+  return TOKEN_ERROR_CODES.includes(code)
+}
+
+// 获取基础统计数据
+const getBasicStatisticData = async () => {
+  state.loading.basic = true;
+  try {
+    const rsp = await request.get('/statistic?type=basic');
+    if (rsp && rsp.data && rsp.data.code == 200) {
+      state.basicData = rsp.data.data;
+    } else {
+      if (shouldSilenceAuthError(rsp)) {
+        return
+      }
+      toast.error(rsp?.data?.msg || '获取基础统计数据失败');
+    }
+  } catch (error) {
+    if (shouldSilenceAuthError(error)) {
+      return
+    }
+    toast.error('获取基础统计数据时发生错误');
+  } finally {
+    state.loading.basic = false;
+  }
+}
+
+// 获取趋势统计数据
+const getTrendStatisticData = async () => {
+  state.loading.trend = true;
+  try {
+    // 根据屏幕大小决定请求的天数
+    const isSmallScreen = window.innerWidth < 768;
+    const days = isSmallScreen ? 15 : 30;
+    state.trendDays = days;
+
+    const rsp = await request.get(`/statistic?type=trend&days=${days}`);
+    if (rsp && rsp.data && rsp.data.code == 200) {
+      state.trendData = rsp.data.data;
+      // 数据加载完成后重新渲染折线图
+      setTimeout(() => {
+        renderLineChart();
+      }, 100);
+    } else {
+      if (shouldSilenceAuthError(rsp)) {
+        return
+      }
+      toast.error(rsp?.data?.msg || '获取趋势统计数据失败');
+    }
+  } catch (error) {
+    if (shouldSilenceAuthError(error)) {
+      return
+    }
+    toast.error('获取趋势统计数据时发生错误');
+  } finally {
+    state.loading.trend = false;
+  }
+}
+
+// 获取渠道统计数据
+const getChannelStatisticData = async () => {
+  state.loading.channels = true;
+  try {
+    const rsp = await request.get('/statistic?type=channels');
+    if (rsp && rsp.data && rsp.data.code == 200) {
+      state.channelData = rsp.data.data;
+      // 数据加载完成后重新渲染饼图
+      setTimeout(() => {
+        renderPieChart();
+      }, 100);
+    } else {
+      if (shouldSilenceAuthError(rsp)) {
+        return
+      }
+      toast.error(rsp?.data?.msg || '获取渠道统计数据失败');
+    }
+  } catch (error) {
+    if (shouldSilenceAuthError(error)) {
+      return
+    }
+    toast.error('获取渠道统计数据时发生错误');
+  } finally {
+    state.loading.channels = false;
+  }
+}
+
+// 并行加载所有统计数据
+const loadAllStatisticData = async () => {
+  await Promise.all([
+    getBasicStatisticData(),
+    getTrendStatisticData(),
+    getChannelStatisticData()
+  ]);
+}
+
+const renderLineChart = () => {
+  const latestSendData = state.trendData.latest_send_data || [];
+
+  const options = {
+    series: [
+      {
+        name: '发送总数',
+        data: latestSendData.length > 0
+          ? latestSendData.map(item => item.num || 0)
+          : []
+      },
+      {
+        name: '发送成功数',
+        data: latestSendData.length > 0
+          ? latestSendData.map(item => item.day_succ_num || 0)
+          : []
+      },
+      {
+        name: '发送失败数',
+        data: latestSendData.length > 0
+          ? latestSendData.map(item => item.day_failed_num || 0)
+          : []
+      },
+    ],
+    chart: {
+      type: 'line',
+      height: 350,
+      toolbar: { show: false },
+      background: 'transparent',
+      animations: {
+        enabled: true,
+        easing: 'easeinout',
+        speed: 800,
+        animateGradually: {
+          enabled: true,
+          delay: 150
+        },
+        dynamicAnimation: {
+          enabled: true,
+          speed: 350
+        }
+      },
+      dropShadow: {
+        enabled: true,
+        color: '#000',
+        top: 18,
+        left: 7,
+        blur: 10,
+        opacity: 0.2
+      }
+    },
+    stroke: {
+      curve: 'smooth',
+      width: 3,
+      lineCap: 'round'
+    },
+    markers: {
+      size: 6,
+      colors: ['#3b82f6', '#10b981', '#ef4444'],
+      strokeColors: '#fff',
+      strokeWidth: 2,
+      hover: {
+        size: 8,
+        sizeOffset: 3
+      }
+    },
+    xaxis: {
+      categories: latestSendData.length > 0
+        ? latestSendData.map(item => item.day)
+        : [],
+      axisBorder: {
+        show: false
+      },
+      axisTicks: {
+        show: false
+      },
+      labels: {
+        style: {
+          colors: '#64748b',
+          fontSize: '12px',
+          fontFamily: 'Inter, sans-serif'
+        }
+      },
+      tooltip: {
+        enabled: false
+      }
+    },
+    yaxis: {
+      labels: {
+        style: {
+          colors: '#64748b',
+          fontSize: '12px',
+          fontFamily: 'Inter, sans-serif'
+        },
+        formatter: function (val: number) {
+          return val + ' 条'
+        }
+      }
+    },
+    colors: ['#3b82f6', '#10b981', '#ef4444'], // 蓝色表示总数，绿色表示成功，红色表示失败
+    fill: {
+      type: 'gradient',
+      gradient: {
+        shade: 'light',
+        type: 'vertical',
+        shadeIntensity: 0.5,
+        gradientToColors: ['#60a5fa', '#34d399', '#f87171'],
+        inverseColors: false,
+        opacityFrom: 0.8,
+        opacityTo: 0.1,
+        stops: [0, 100]
+      }
+    },
+    grid: {
+      borderColor: '#e2e8f0',
+      strokeDashArray: 3,
+      xaxis: {
+        lines: {
+          show: false
+        }
+      },
+      yaxis: {
+        lines: {
+          show: true
+        }
+      },
+      padding: {
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0
+      }
+    },
+    legend: {
+      position: 'top',
+      horizontalAlign: 'right',
+      floating: true,
+      offsetY: -25,
+      offsetX: -5,
+      fontSize: '12px',
+      fontFamily: 'Inter, sans-serif',
+      markers: {
+        width: 8,
+        height: 8,
+        radius: 4
+      }
+    },
+    tooltip: {
+      enabled: true,
+      shared: true,
+      intersect: false,
+      theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
+      style: {
+        fontSize: '12px',
+        fontFamily: 'Inter, sans-serif'
+      },
+      x: {
+        show: true,
+        format: 'MM/dd'
+      },
+      y: {
+        formatter: function (val: number, { seriesIndex: _seriesIndex }: { seriesIndex: number }) {
+          return val + ' 条'
+        }
+      },
+      marker: {
+        show: true
+      },
+      custom: function ({ series, seriesIndex: _seriesIndex, dataPointIndex, w }: { series: number[][], seriesIndex: number, dataPointIndex: number, w: any }) {
+        const successCount = series[1][dataPointIndex];
+        const failedCount = series[2][dataPointIndex];
+        const total = successCount + failedCount;
+        const successRate = total > 0 ? ((successCount / total) * 100).toFixed(1) : '0.0';
+
+        const containerCls = 'bg-card text-foreground p-3 rounded-lg shadow-lg border border-border';
+        const labelMutedCls = 'text-sm text-muted-foreground';
+        const valueStrongCls = 'text-sm font-medium text-foreground';
+        const successRateCls = 'text-sm font-medium';
+
+        return `
+          <div class="${containerCls}">
+            <div class="font-medium mb-2">${w.globals.categoryLabels[dataPointIndex]}</div>
+            <div class="space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="flex items-center">
+                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                  <span class="${labelMutedCls}">成功:</span>
+                </span>
+                <span class="${valueStrongCls}">${successCount} 条</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="flex items-center">
+                  <span class="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
+                  <span class="${labelMutedCls}">失败:</span>
+                </span>
+                <span class="${valueStrongCls}">${failedCount} 条</span>
+              </div>
+              <div class="border-t border-border pt-1 mt-2">
+                <div class="flex items-center justify-between">
+                  <span class="${labelMutedCls}">成功率:</span>
+                  <span class="${successRateCls}">${successRate}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    },
+    responsive: [{
+      breakpoint: 768,
+      options: {
+        chart: {
+          height: 300
+        },
+        legend: {
+          position: 'top',
+          horizontalAlign: 'right',
+          floating: true,
+          offsetY: -20,
+          offsetX: -5,
+          fontSize: '10px',
+          markers: {
+            width: 6,
+            height: 6,
+            radius: 3
+          },
+          itemMargin: {
+            horizontal: 5,
+            vertical: 0
+          }
+        }
+      }
+    }]
+  }
+  const chart = new ApexCharts(document.querySelector("#sales-chart"), options)
+  chart.render();
+
+}
+
+const renderPieChart = () => {
+  const wayCateData = state.channelData.way_cate_data || [];
+  const options = {
+    series: wayCateData.length > 0
+      ? wayCateData.map(item => item.count_num)
+      : [],
+    chart: {
+      type: 'pie',
+      height: 350,
+      toolbar: { show: false },
+      background: 'transparent',
+      animations: {
+        enabled: true,
+        easing: 'easeinout',
+        speed: 800,
+        animateGradually: {
+          enabled: true,
+          delay: 150
+        },
+        dynamicAnimation: {
+          enabled: true,
+          speed: 350
+        }
+      }
+    },
+    labels: wayCateData.length > 0
+      ? wayCateData.map(item => item.way_name)
+      : [],
+    colors: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'],
+    legend: {
+      position: 'bottom',
+      fontSize: '10px',
+      fontFamily: 'Inter, sans-serif',
+      markers: {
+        width: 8,
+        height: 8,
+        radius: 4
+      }
+    },
+    plotOptions: {
+      pie: {
+        donut: {
+          size: '0%'
+        },
+        expandOnClick: true
+      }
+    },
+    dataLabels: {
+      enabled: true,
+      formatter: function (val: number) {
+        return val.toFixed(1) + '%'
+      },
+      style: {
+        fontSize: '10px',
+        fontFamily: 'Inter, sans-serif',
+        fontWeight: 'bold'
+      }
+    },
+    tooltip: {
+      enabled: true,
+      theme: 'light',
+      style: {
+        fontSize: '12px',
+        fontFamily: 'Inter, sans-serif'
+      },
+      y: {
+        formatter: function (val: number) {
+          return val + ' 条'
+        }
+      }
+    },
+    responsive: [{
+      breakpoint: 768,
+      options: {
+        chart: {
+          height: 300
+        },
+        legend: {
+          position: 'bottom'
+        }
+      }
+    }]
+  }
+  const pieChart = new ApexCharts(document.querySelector("#pie-chart"), options)
+  pieChart.render();
+}
+
+// 获取今日日期
+const getTodayDate = () => {
+  const today = new Date();
+  return today.toISOString().split('T')[0]; // 返回 YYYY-MM-DD 格式
+}
+
+onMounted(() => {
+  loadAllStatisticData();
+})
+
+
+
+</script>
+
+<template>
+  <div class="w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+
+    <StatCard title="发送日志数" :value="state.basicData.message_total_num" description="" :icon="FileTextIcon"
+      route-path="/sendlogs" />
+    <StatCard title="今日发送数" :value="state.basicData.today_total_num" description="" :icon="SendIcon"
+      :route-path="`/sendlogs?query=${encodeURIComponent(JSON.stringify({ day_created_on: getTodayDate() }))}`" />
+    <StatCard title="今日成功数" :value="state.basicData.today_succ_num" description="" :icon="CheckCircleIcon"
+      :route-path="`/sendlogs?query=${encodeURIComponent(JSON.stringify({ status: '1', day_created_on: getTodayDate() }))}`" />
+    <StatCard title="今日失败数" :value="state.basicData.today_failed_num" description="" :icon="XCircleIcon"
+      :route-path="`/sendlogs?query=${encodeURIComponent(JSON.stringify({ status: '0', day_created_on: getTodayDate() }))}`" />
+  </div>
+
+  <!-- 折线图 -->
+  <!-- <LineChart
+    :data="data"
+    index="year"
+    :categories="['Export Growth Rate', 'Import Growth Rate']"
+    :y-formatter="(tick, i) => {
+      return typeof tick === 'number'
+        ? `$ ${new Intl.NumberFormat('us').format(tick).toString()}`
+        : ''
+    }"
+  /> -->
+
+  <!-- 图表区域 -->
+  <div class="w-full mt-8 grid grid-cols-1 lg:grid-cols-10 gap-6">
+    <!-- 折线图 -->
+    <Card class="w-full lg:col-span-7">
+      <CardHeader>
+        <CardTitle>消息发送趋势</CardTitle>
+        <CardDescription>最近{{ state.trendDays }}天的发送情况统计</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div id="sales-chart" class="w-full h-[350px]"></div>
+      </CardContent>
+    </Card>
+
+    <!-- 饼图 -->
+    <Card class="w-full lg:col-span-3">
+      <CardHeader>
+        <CardTitle>发送渠道分布</CardTitle>
+        <CardDescription>各发送渠道的使用情况统计</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div id="pie-chart" class="w-full h-[350px]"></div>
+      </CardContent>
+    </Card>
+  </div>
+</template>

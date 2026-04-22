@@ -172,6 +172,16 @@ npm run dev
   - [docs/api/examples.md](docs/api/examples.md)
 - 本地开发：[docs/deployment/development.md](docs/deployment/development.md)
 
-# 6 许可证
+
+
+# 6 交流群
+
+- 扫码进入微信交流群
+
+![微信群](https://image.hukanfa.com/public/images/message_wxgroup.png)
+
+
+
+# 7 许可证
 
 本项目基于 [MIT License](LICENSE) 开源。

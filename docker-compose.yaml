@@ -1,0 +1,22 @@
+services:
+  unimessage:
+    container_name: message-unified-push
+    image: hukanfa/message-unified-push:v1.0.0
+    ports:
+      - "8081:8081"
+    environment:
+      - DB_TYPE=mysql
+      - DB_USER=message_user
+      - DB_PASSWORD=your-db-password
+      - DB_HOST=192.168.26.11
+      - DB_NAME=message
+      - DB_PORT=3307
+      - DB_TABLE_PREFIX=message_
+      - DB_SSL=false
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

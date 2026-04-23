@@ -28,6 +28,8 @@ FROM alpine:latest
 
 WORKDIR /app
 
+RUN apk add --no-cache curl ca-certificates
+
 # 仅拷贝编译好的二进制和必要配置
 COPY --from=builder /app/unimessage /app/unimessage
 COPY conf ./conf

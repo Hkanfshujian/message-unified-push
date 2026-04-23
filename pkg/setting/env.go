@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -55,7 +56,7 @@ func initDefaultSettings() {
 	AppSetting.InitData = ""
 
 	ServerSetting.RunMode = "release"
-	ServerSetting.HttpPort = 8000
+	ServerSetting.HttpPort = 8081
 	ServerSetting.ReadTimeout = time.Duration(60)
 	ServerSetting.WriteTimeout = time.Duration(60)
 	ServerSetting.EmbedHtml = ""
@@ -72,9 +73,23 @@ func initDefaultSettings() {
 	DatabaseSetting.Ssl = "false"
 }
 
+var sensitiveKeys = []string{"PASSWORD", "SECRET", "KEY", "TOKEN", "CREDENTIAL"}
+
 func printOptionValue() {
 	for key, val := range optionValueMap {
-		log.Printf("[ops-message-unified-push] current option env: %s, value: %s", key, val)
+		isSensitive := false
+		upperKey := strings.ToUpper(key)
+		for _, sk := range sensitiveKeys {
+			if strings.Contains(upperKey, sk) {
+				isSensitive = true
+				break
+			}
+		}
+		if isSensitive {
+			log.Printf("[ops-message-unified-push] current option env: %s, value: *****", key)
+		} else {
+			log.Printf("[ops-message-unified-push] current option env: %s, value: %s", key, val)
+		}
 	}
 }
 

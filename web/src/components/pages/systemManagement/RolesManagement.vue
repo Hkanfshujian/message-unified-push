@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import Pagination from '@/components/ui/Pagination.vue'
 import EmptyTableState from '@/components/ui/EmptyTableState.vue'
-import { ChevronDown, ChevronRight, FolderTree } from 'lucide-vue-next'
+import { DownOutlined, RightOutlined, ApartmentOutlined } from '@ant-design/icons-vue'
 
 interface RoleItem {
   id: number
@@ -523,7 +523,7 @@ onMounted(async () => {
       <Button @click="openAdd">新增角色</Button>
     </div>
 
-    <div class="rounded border border-slate-300 dark:border-slate-600 overflow-x-auto">
+    <div class="rounded border weak-divider overflow-x-auto">
       <Table class="data-table border-collapse">
         <TableHeader>
           <TableRow>
@@ -590,7 +590,7 @@ onMounted(async () => {
           <DialogTitle>确认删除角色</DialogTitle>
         </DialogHeader>
         <div class="space-y-2">
-          <div class="text-sm text-gray-600">
+          <div class="text-sm text-muted-foreground">
             请输入角色名称
             <span class="text-red-500 mx-1">{{ deleteTarget?.name }}</span>
             以确认删除
@@ -609,9 +609,9 @@ onMounted(async () => {
         <DialogHeader>
           <DialogTitle>角色权限授权 - {{ assignRole?.name }}</DialogTitle>
         </DialogHeader>
-        <div v-if="permissionList.length > 0" class="rounded border px-3 py-2 bg-slate-50 dark:bg-slate-900/40">
+        <div v-if="permissionList.length > 0" class="rounded border weak-divider px-3 py-2 bg-muted/40 dark:bg-muted/20">
           <div class="flex flex-wrap items-center gap-2 justify-between">
-            <div class="text-sm text-gray-700 dark:text-slate-200">
+            <div class="text-sm text-foreground">
               已选
               <span class="font-semibold text-brand-600 dark:text-brand-300">{{ selectedPermissionCount }}</span>
               /
@@ -637,13 +637,13 @@ onMounted(async () => {
             />
           </div>
         </div>
-        <div class="max-h-[480px] overflow-y-auto border rounded p-3">
+        <div class="max-h-[480px] overflow-y-auto border weak-divider rounded p-3">
           <div v-if="permissionList.length === 0" class="text-sm text-muted-foreground">暂无可分配权限</div>
           <div v-else class="space-y-1">
             <div
               v-for="row in permissionTreeRows"
               :key="row.key"
-              class="rounded border border-transparent hover:border-gray-200 dark:hover:border-slate-700"
+              class="rounded border border-transparent hover:border-[var(--line-weak)]"
               :style="{ paddingLeft: `${row.depth * 18}px` }"
             >
               <div v-if="row.type === 'node'" class="h-9 px-2 flex items-center gap-2">
@@ -652,7 +652,7 @@ onMounted(async () => {
                   class="w-4 h-4 rounded border flex items-center justify-center text-[11px] font-bold leading-none transition-colors"
                   :class="isNodeChecked(row.node)
                     ? 'border-brand-500 bg-brand-500 text-white'
-                    : 'border-gray-300 text-transparent dark:border-slate-600'"
+                    : 'weak-divider text-transparent'"
                   :title="getNodeToggleHint(row.node)"
                   @click="toggleNodePermissions(row.node, !isNodeChecked(row.node))"
                 >
@@ -660,12 +660,12 @@ onMounted(async () => {
                 </button>
                 <button
                   type="button"
-                  class="flex items-center gap-1 text-sm font-medium text-gray-800 dark:text-slate-100"
+                  class="flex items-center gap-1 text-sm font-medium text-foreground"
                   @click="toggleNodeExpand(row.node.key)"
                 >
-                  <ChevronDown v-if="isNodeExpanded(row.node.key)" class="w-4 h-4 text-gray-500" />
-                  <ChevronRight v-else class="w-4 h-4 text-gray-500" />
-                  <FolderTree class="w-4 h-4 text-brand-500" />
+                  <DownOutlined v-if="isNodeExpanded(row.node.key)" class="text-[14px] text-muted-foreground" />
+                  <RightOutlined v-else class="text-[14px] text-muted-foreground" />
+                  <ApartmentOutlined class="text-[14px] text-brand-500" />
                   <span>{{ row.node.label }}</span>
                 </button>
               </div>
@@ -675,12 +675,12 @@ onMounted(async () => {
                   :checked="selectedPermissionIds.includes(row.permission.id)"
                   @change="(event) => togglePermission(row.permission.id, (event.target as HTMLInputElement).checked)"
                 >
-                <span class="text-gray-900 dark:text-slate-100">{{ row.permission.name }}</span>
+                <span class="text-foreground">{{ row.permission.name }}</span>
               </label>
             </div>
             <div
               v-if="permissionTreeRows.length === 0"
-              class="h-10 px-2 flex items-center text-sm text-gray-500"
+              class="h-10 px-2 flex items-center text-sm text-muted-foreground"
             >
               未匹配到相关权限，请尝试其他关键字
             </div>

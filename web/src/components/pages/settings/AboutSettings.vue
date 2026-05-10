@@ -60,12 +60,12 @@ export default {
       <!-- 技术栈 + 功能特性 -->
       <div class="space-y-6">
         <div>
-          <h3 class="text-sm font-medium text-gray-900 mb-2">技术栈</h3>
+          <h3 class="text-sm font-medium text-foreground mb-2">技术栈</h3>
           <div class="flex flex-wrap gap-2">
             <span
               v-for="tech in state.techStack"
               :key="tech"
-              class="inline-flex items-center rounded-full bg-[#fef3c7] text-[#d97706] px-3 py-1 text-xs font-medium"
+              class="inline-flex items-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 px-3 py-1 text-xs font-medium"
             >
               {{ tech }}
             </span>
@@ -73,12 +73,12 @@ export default {
         </div>
 
         <div>
-          <h3 class="text-sm font-medium text-gray-900 mb-2">功能特性</h3>
+          <h3 class="text-sm font-medium text-foreground mb-2">功能特性</h3>
           <div class="flex flex-wrap gap-2">
             <span
               v-for="feature in state.features"
               :key="feature"
-              class="inline-flex items-center rounded-full bg-[#f3f4f6] text-[#4b5563] px-3 py-1 text-xs"
+              class="inline-flex items-center rounded-full bg-muted text-muted-foreground px-3 py-1 text-xs"
             >
               {{ feature }}
             </span>
@@ -89,29 +89,29 @@ export default {
       <!-- 系统信息 -->
       <div class="space-y-6">
         <div>
-          <h3 class="text-sm font-medium text-gray-900 mb-2">系统信息</h3>
+          <h3 class="text-sm font-medium text-foreground mb-2">系统信息</h3>
           <dl class="space-y-2 text-sm">
             <div class="flex justify-between">
-              <dt class="text-gray-500">系统版本</dt>
-              <dd class="text-gray-900 font-medium">
+              <dt class="text-muted-foreground">系统版本</dt>
+              <dd class="text-foreground font-medium">
                 {{ state.version }}
               </dd>
             </div>
             <div class="flex justify-between">
-              <dt class="text-gray-500">构建时间</dt>
-              <dd class="text-gray-900">
+              <dt class="text-muted-foreground">构建时间</dt>
+              <dd class="text-foreground">
                 {{ buildTime.includes('开发模式') ? buildTime : new Date(buildTime).toLocaleString('zh-CN') }}
               </dd>
             </div>
             <div class="flex justify-between">
-              <dt class="text-gray-500">内存使用</dt>
-              <dd class="text-gray-900">
+              <dt class="text-muted-foreground">内存使用</dt>
+              <dd class="text-foreground">
                 {{ state.memoryUsage || '获取中...' }}
               </dd>
             </div>
             <div class="flex justify-between">
-              <dt class="text-gray-500">运行时间</dt>
-              <dd class="text-gray-900">
+              <dt class="text-muted-foreground">运行时间</dt>
+              <dd class="text-foreground">
                 {{ state.uptime || '获取中...' }}
               </dd>
             </div>

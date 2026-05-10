@@ -14,8 +14,9 @@ import TemplateInstanceConfig from './TemplateInstanceConfig.vue'
 import TemplateEditor from './TemplateEditor.vue'
 import { request } from '@/api/api'
 import { getPageSize } from '@/util/pageUtils'
+import { appendDateRangeQuery, pickDateRangeQuery } from '@/util/routeQuery'
 import { toast } from 'vue-sonner'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 interface MessageTemplate {
   id: string  // 模板ID是字符串类型（UUID）
@@ -34,6 +35,7 @@ interface MessageTemplate {
   cron_msg_count?: number
 }
 
+const route = useRoute()
 const router = useRouter()
 
 let state = reactive({
@@ -64,8 +66,32 @@ const deleteTarget = ref<MessageTemplate | null>(null)
 
 const totalPages = computed(() => Math.ceil(state.total / state.pageSize))
 
+const parsePositiveNumber = (value: unknown, fallback: number) => {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return fallback
+  return Math.floor(n)
+}
+
+const buildRouteQuery = () => {
+  const nextQuery: Record<string, string> = {}
+  const text = state.search.trim()
+  if (text) nextQuery.text = text
+  if (state.status && state.status !== 'all') nextQuery.status = state.status
+  nextQuery.page = String(state.currPage)
+  nextQuery.size = String(state.pageSize)
+  appendDateRangeQuery(nextQuery, route.query as Record<string, unknown>)
+  return nextQuery
+}
+
+const syncRouteQuery = async () => {
+  await router.replace({ path: route.path, query: buildRouteQuery() })
+}
+
 const queryListData = async (page: number, size: number, text = '', status = '') => {
   const params: any = { page, size, text, status }
+  const { startTime, endTime } = pickDateRangeQuery(route.query as Record<string, unknown>)
+  if (startTime) params.start_time = startTime
+  if (endTime) params.end_time = endTime
   const rsp = await request.get('/templates/list', { params })
   state.tableData = rsp.data.data.lists || []
   state.total = rsp.data.data.total || 0
@@ -74,6 +100,7 @@ const queryListData = async (page: number, size: number, text = '', status = '')
 const changePage = async (page: number) => {
   if (page >= 1 && page <= totalPages.value) {
     state.currPage = page
+    await syncRouteQuery()
     const statusParam = state.status === 'all' ? '' : state.status
     await queryListData(state.currPage, state.pageSize, state.search, statusParam)
   }
@@ -83,12 +110,14 @@ const handlePageSizeChange = async (size: number) => {
   if (size <= 0) return
   state.pageSize = size
   state.currPage = 1
+  await syncRouteQuery()
   const statusParam = state.status === 'all' ? '' : state.status
   await queryListData(state.currPage, state.pageSize, state.search, statusParam)
 }
 
 const filterFunc = async () => {
   state.currPage = 1
+  await syncRouteQuery()
   const statusParam = state.status === 'all' ? '' : state.status
   await queryListData(state.currPage, state.pageSize, state.search, statusParam)
 }
@@ -200,7 +229,15 @@ const handleViewLogs = (template: MessageTemplate) => {
 }
 
 onMounted(async () => {
-  await queryListData(1, state.pageSize)
+  state.search = typeof route.query.text === 'string'
+    ? route.query.text
+    : (typeof route.query.name === 'string' ? route.query.name : '')
+  state.status = typeof route.query.status === 'string' && route.query.status ? route.query.status : 'all'
+  state.currPage = parsePositiveNumber(route.query.page, 1)
+  state.pageSize = parsePositiveNumber(route.query.size, state.pageSize)
+  await syncRouteQuery()
+  const statusParam = state.status === 'all' ? '' : state.status
+  await queryListData(state.currPage, state.pageSize, state.search, statusParam)
 })
 </script>
 
@@ -239,7 +276,7 @@ onMounted(async () => {
     </div>
 
     <!-- 表格 -->
-    <div class="rounded border border-slate-300 dark:border-slate-600 overflow-x-auto">
+    <div class="rounded border weak-divider overflow-x-auto">
       <Table class="data-table border-collapse">
       <TableHeader>
         <TableRow>
@@ -262,7 +299,7 @@ onMounted(async () => {
               description="还没有创建任何消息模板，点击右上角按钮创建新模板" 
             >
               <template #icon>
-                <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                 </svg>
               </template>
@@ -354,7 +391,7 @@ onMounted(async () => {
           <DialogTitle>确认删除模板</DialogTitle>
         </DialogHeader>
         <div class="space-y-2">
-          <div class="text-sm text-gray-600">
+          <div class="text-sm text-muted-foreground">
             请输入要删除的模板名称
             <span v-if="deleteTarget?.name" class="text-red-500 font-semibold mx-1">{{ deleteTarget.name }}</span>
             以确认操作

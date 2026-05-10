@@ -124,7 +124,7 @@ loadAvailableTemplates()
     <div class="space-y-1">
       <Label for="cron_expression" class="text-sm">Cron表达式</Label>
       <Input id="cron_expression" v-model="localFormData.cron_expression" placeholder="请输入Cron表达式，如: 0 2 * * *" class="h-8" />
-      <div class="text-xs text-gray-500">
+      <div class="text-xs text-muted-foreground">
         <p class="mb-1">常用模板：</p>
         <div class="flex flex-wrap gap-1">
           <Button v-for="template in cronTemplates" :key="template.value" size="sm" variant="outline"

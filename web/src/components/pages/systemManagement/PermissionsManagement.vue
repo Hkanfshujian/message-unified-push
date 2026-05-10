@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import EmptyTableState from '@/components/ui/EmptyTableState.vue'
-import { ChevronDown, ChevronRight, FolderTree } from 'lucide-vue-next'
+import { DownOutlined, RightOutlined, ApartmentOutlined } from '@ant-design/icons-vue'
 
 interface PermissionItem {
   id: number
@@ -329,8 +329,8 @@ onMounted(async () => {
 <template>
   <div class="h-full flex flex-col">
     <TooltipProvider :delay-duration="120" class="flex-1 min-h-0">
-      <div class="border rounded h-full overflow-y-auto">
-        <div class="sticky top-0 z-30 p-3 border-b bg-white/90 dark:bg-slate-950/90 backdrop-blur supports-[backdrop-filter]:bg-white/75 space-y-2 relative">
+      <div class="border weak-divider rounded h-full overflow-y-auto">
+        <div class="sticky top-0 z-30 p-3 border-b weak-divider bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75 space-y-2 relative">
           <div class="toolbar mb-0">
             <div class="search-group">
               <Input v-model="state.search" placeholder="按编码/名称/路径搜索" class="search-input" @keyup.enter="queryList" />
@@ -350,9 +350,9 @@ onMounted(async () => {
             <Button @click="openAdd">新增权限</Button>
           </div>
 
-          <div class="rounded border px-3 py-2 bg-slate-50/95 dark:bg-slate-900/35 shadow-[0_1px_2px_rgba(15,23,42,0.06)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.22)]">
+          <div class="rounded border weak-divider px-3 py-2 bg-muted/40 dark:bg-muted/20 shadow-[0_1px_2px_rgba(15,23,42,0.06)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.22)]">
             <div class="flex flex-wrap items-center gap-2 justify-between">
-              <div class="text-sm text-gray-700 dark:text-slate-200">
+              <div class="text-sm text-foreground">
                 当前
                 <span class="font-semibold text-brand-600 dark:text-brand-300">{{ totalPermissionCount }}</span>
                 个权限点，
@@ -381,21 +381,21 @@ onMounted(async () => {
             <div
               v-for="row in permissionTreeRows"
               :key="row.key"
-              class="rounded border border-transparent hover:border-gray-200 dark:hover:border-slate-700"
+              class="rounded border border-transparent hover:border-[var(--line-weak)]"
               :style="{ paddingLeft: `${row.depth * 18}px` }"
             >
               <div v-if="row.type === 'node'" class="h-9 px-2 flex items-center gap-2">
-                <button type="button" class="text-gray-500" @click="toggleNodeExpand(row.node.key)">
-                  <ChevronDown v-if="isNodeExpanded(row.node.key)" class="w-4 h-4" />
-                  <ChevronRight v-else class="w-4 h-4" />
+                <button type="button" class="text-muted-foreground" @click="toggleNodeExpand(row.node.key)">
+                  <DownOutlined v-if="isNodeExpanded(row.node.key)" class="text-[14px]" />
+                  <RightOutlined v-else class="text-[14px]" />
                 </button>
-                <FolderTree class="w-4 h-4 text-brand-500" />
-                <span class="text-sm font-medium text-gray-800 dark:text-slate-100">{{ row.node.label }}</span>
+                <ApartmentOutlined class="text-[14px] text-brand-500" />
+                <span class="text-sm font-medium text-foreground">{{ row.node.label }}</span>
               </div>
               <div v-else class="min-h-10 px-2 py-1 flex items-center justify-between gap-3">
                 <Tooltip>
                   <TooltipTrigger as-child>
-                    <div class="min-w-0 text-sm text-gray-900 dark:text-slate-100 truncate cursor-help">
+                    <div class="min-w-0 text-sm text-foreground truncate cursor-help">
                       {{ row.permission.name }}
                     </div>
                   </TooltipTrigger>
@@ -414,7 +414,7 @@ onMounted(async () => {
             </div>
             <div
               v-if="permissionTreeRows.length === 0"
-              class="h-10 px-2 flex items-center text-sm text-gray-500"
+              class="h-10 px-2 flex items-center text-sm text-muted-foreground"
             >
               未匹配到相关权限，请尝试其他关键字
             </div>

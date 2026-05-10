@@ -20,6 +20,8 @@ type SendWay struct {
 	ModifiedBy string
 	Auth       string
 	CreatedOn  string
+	StartTime  string
+	EndTime    string
 
 	PageNum  int
 	PageSize int
@@ -545,6 +547,12 @@ func (sw *SendWay) GetAll() ([]models.SendWays, error) {
 
 func (sw *SendWay) getMaps() map[string]interface{} {
 	maps := make(map[string]interface{})
+	if sw.StartTime != "" {
+		maps["start_time"] = sw.StartTime
+	}
+	if sw.EndTime != "" {
+		maps["end_time"] = sw.EndTime
+	}
 	return maps
 }
 

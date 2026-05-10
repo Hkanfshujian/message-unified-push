@@ -102,13 +102,13 @@ func (s *MQSourceService) GetByID(id string) (*models.MQSource, error) {
 }
 
 // GetAll 获取数据源列表
-func (s *MQSourceService) GetAll(name, status, mqType string, page, pageSize int) ([]models.MQSource, int64, error) {
-	sources, err := models.GetMQSources(page, pageSize, name, mqType, status)
+func (s *MQSourceService) GetAll(name, status, mqType, startTime, endTime string, page, pageSize int) ([]models.MQSource, int64, error) {
+	sources, err := models.GetMQSources(page, pageSize, name, mqType, status, startTime, endTime)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	total, err := models.GetMQSourcesTotal(name, mqType, status)
+	total, err := models.GetMQSourcesTotal(name, mqType, status, startTime, endTime)
 	if err != nil {
 		return nil, 0, err
 	}

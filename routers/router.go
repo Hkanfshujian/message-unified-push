@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"ops-message-unified-push/middleware"
 	"ops-message-unified-push/pkg/setting"
 	"ops-message-unified-push/routers/api"
 	v1 "ops-message-unified-push/routers/api/v1"
 	v2 "ops-message-unified-push/routers/api/v2"
-	"net/http"
 	"strings"
 	"time"
 
@@ -125,7 +125,7 @@ func InitRouter(f embed.FS) *gin.Engine {
 	router.POST("/auth", api.GetAuth)
 	router.POST("/auth/register", api.RegisterAuth)
 	router.GET("/auth/public-config", api.GetPublicAuthConfig)
-	
+
 	// Casdoor 登录
 	router.GET("/auth/casdoor/login", api.CasdoorLogin)
 	router.GET("/auth/casdoor/callback", api.CasdoorCallback)
@@ -140,9 +140,11 @@ func InitRouter(f embed.FS) *gin.Engine {
 		apiV1.POST("/sendways/edit", middleware.RequirePermission("message:sendways:edit"), v1.EditSendWay)
 		apiV1.POST("/sendways/test", middleware.RequirePermission("message:sendways:test"), v1.TestSendWay)
 		apiV1.GET("/sendways/list", middleware.RequirePermission("message:sendways:view"), v1.GetMsgSendWayList)
+		apiV1.GET("/sendways/export", middleware.RequirePermission("message:sendways:view"), v1.ExportSendWayCsv)
 		apiV1.GET("/sendways/get", middleware.RequirePermission("message:sendways:view"), v1.GetMsgSendWay)
 
 		apiV1.GET("/sendlogs/list", middleware.RequirePermission("message:sendlogs:view"), v1.GetTaskSendLogsList)
+		apiV1.GET("/sendlogs/export", middleware.RequirePermission("message:sendlogs:view"), v1.ExportTaskSendLogsCsv)
 
 		// settings
 		apiV1.POST("/settings/setpasswd", middleware.RequirePermission("system:settings:edit"), v1.EditPasswd)
@@ -170,20 +172,24 @@ func InitRouter(f embed.FS) *gin.Engine {
 
 		// login logs
 		apiV1.GET("/loginlogs/recent", middleware.RequirePermission("system:loginlogs:view"), v1.GetRecentLoginLogs)
+		apiV1.GET("/loginlogs/export", middleware.RequirePermission("system:loginlogs:view"), v1.ExportLoginLogCsv)
 
 		// statistic
 		apiV1.GET("/statistic", middleware.RequirePermission("dashboard:view"), v1.GetStatisticData)
+		apiV1.GET("/statistic/export", middleware.RequirePermission("dashboard:view"), v1.ExportDashboardStatisticCsv)
 		apiV1.GET("/statistic/task", middleware.RequirePermission("dashboard:view"), v1.GetSendStatsByTask)
 
 		// cronMessage
 		apiV1.POST("/cronmessages/addone", middleware.RequirePermission("message:cron:add"), v1.AddCronMsgTask)
 		apiV1.GET("/cronmessages/list", middleware.RequirePermission("message:cron:view"), v1.GetCronMsgList)
+		apiV1.GET("/cronmessages/export", middleware.RequirePermission("message:cron:view"), v1.ExportCronMsgCsv)
 		apiV1.POST("/cronmessages/delete", middleware.RequirePermission("message:cron:delete"), v1.DeleteCronMsgTask)
 		apiV1.POST("/cronmessages/edit", middleware.RequirePermission("message:cron:edit"), v1.EditCronMsgTask)
 		apiV1.POST("/cronmessages/sendnow", middleware.RequirePermission("message:cron:sendnow"), v1.SendNowCronMsg)
 
 		// messageTemplate
 		apiV1.GET("/templates/list", middleware.RequirePermission("message:template:view"), v1.GetMessageTemplateList)
+		apiV1.GET("/templates/export", middleware.RequirePermission("message:template:view"), v1.ExportTemplateCsv)
 		apiV1.GET("/templates/get", middleware.RequirePermission("message:template:view"), v1.GetMessageTemplate)
 		apiV1.POST("/templates/add", middleware.RequirePermission("message:template:add"), v1.AddMessageTemplate)
 		apiV1.POST("/templates/edit", middleware.RequirePermission("message:template:edit"), v1.EditMessageTemplate)
@@ -232,6 +238,7 @@ func InitRouter(f embed.FS) *gin.Engine {
 		// MQ 数据源管理
 		mqSourceCtrl := v1.MQSourceController{}
 		apiV1.GET("/mq-sources/list", middleware.RequirePermission("data:mq-source:view"), mqSourceCtrl.GetMQSourceList)
+		apiV1.GET("/mq-sources/export", middleware.RequirePermission("data:mq-source:view"), v1.ExportMQSourceCsv)
 		apiV1.GET("/mq-sources/:id", middleware.RequirePermission("data:mq-source:view"), mqSourceCtrl.GetMQSourceByID)
 		apiV1.POST("/mq-sources/add", middleware.RequirePermission("data:mq-source:add"), mqSourceCtrl.AddMQSource)
 		apiV1.POST("/mq-sources/:id/edit", middleware.RequirePermission("data:mq-source:edit"), mqSourceCtrl.EditMQSource)
@@ -242,6 +249,7 @@ func InitRouter(f embed.FS) *gin.Engine {
 		// MQ 订阅管理
 		subscriptionCtrl := v1.SubscriptionController{}
 		apiV1.GET("/subscriptions/list", middleware.RequirePermission("data:subscription:view"), subscriptionCtrl.GetSubscriptionList)
+		apiV1.GET("/subscriptions/export", middleware.RequirePermission("data:subscription:view"), v1.ExportSubscriptionCsv)
 		apiV1.GET("/subscriptions/:id", middleware.RequirePermission("data:subscription:view"), subscriptionCtrl.GetSubscriptionByID)
 		apiV1.POST("/subscriptions/add", middleware.RequirePermission("data:subscription:add"), subscriptionCtrl.AddSubscription)
 		apiV1.POST("/subscriptions/regex-test", middleware.RequireAnyPermission("data:subscription:add", "data:subscription:edit"), subscriptionCtrl.TestSubscriptionRegex)
@@ -253,6 +261,7 @@ func InitRouter(f embed.FS) *gin.Engine {
 		// 消费日志
 		consumeLogCtrl := v1.ConsumeLogController{}
 		apiV1.GET("/consume-logs/list", middleware.RequirePermission("data:consume-log:view"), consumeLogCtrl.GetConsumeLogList)
+		apiV1.GET("/consume-logs/export", middleware.RequirePermission("data:consume-log:view"), v1.ExportConsumeLogCsv)
 		apiV1.GET("/consume-logs/:id", middleware.RequirePermission("data:consume-log:view"), consumeLogCtrl.GetConsumeLogByID)
 		apiV1.GET("/consume-logs/stats", middleware.RequirePermission("data:consume-log:view"), consumeLogCtrl.GetConsumeStats)
 	}

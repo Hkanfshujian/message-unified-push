@@ -48,10 +48,10 @@
           <PaginationItem v-if="page.type === 'page'" :value="page.value" :is-active="page.value === currentPage">
             <button
               :class="[
-                'px-3 py-1.5 rounded-[1px] text-[12px] leading-none select-none transition-transform duration-150',
+                'px-3 py-1.5 rounded-[1px] text-[12px] leading-none select-none transition-transform duration-[var(--motion-fast)]',
                 page.value === currentPage
                   ? 'font-semibold text-foreground cursor-default'
-                  : 'text-gray-400 hover:text-gray-500 hover:-translate-y-0.5'
+                  : 'text-muted-foreground hover:text-foreground hover:-translate-y-0.5'
               ]"
               :disabled="page.value === currentPage"
               @click="page.value !== currentPage && handlePageChange(page.value)"

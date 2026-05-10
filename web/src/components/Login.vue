@@ -371,7 +371,7 @@ const submitRegister = async () => {
                   </div>
                   <Input id="password" type="password" v-model="password" required />
                 </div>
-                <Button type="submit" class="w-full active:scale-95 active:bg-gray-100 transition duration-150"
+                <Button type="submit" class="w-full active:scale-95 active:bg-muted transition duration-[var(--motion-fast)]"
                   @click.prevent="clickLogin" :disabled="loading">
                   <svg v-if="loading" class="mr-2 h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>

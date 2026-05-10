@@ -1,18 +1,26 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Settings, Trash2, KeyRound, Info, ShieldCheck, Database, Activity } from 'lucide-vue-next'
+import {
+  SettingOutlined,
+  DeleteOutlined,
+  KeyOutlined,
+  InfoCircleOutlined,
+  SafetyCertificateOutlined,
+  DatabaseOutlined,
+  LineChartOutlined
+} from '@ant-design/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
 const menu = [
-  { id: 'site', name: '站点设置', icon: Settings, path: '/system/settings/site' },
-  { id: 'auth', name: '认证设置', icon: ShieldCheck, path: '/system/settings/auth' },
-  { id: 'storage', name: '存储配置', icon: Database, path: '/system/settings/storage' },
-  { id: 'clean', name: '数据清理', icon: Trash2, path: '/system/settings/clean' },
-  { id: 'mqStatusPolicy', name: '策略配置', icon: Activity, path: '/system/settings/mq-status-policy' },
-  { id: 'tokenTool', name: '加解密工具', icon: KeyRound, path: '/system/settings/token-tool' },
-  { id: 'about', name: '站点关于', icon: Info, path: '/system/settings/about' }
+  { id: 'site', name: '站点设置', icon: SettingOutlined, path: '/system/settings/site' },
+  { id: 'auth', name: '认证设置', icon: SafetyCertificateOutlined, path: '/system/settings/auth' },
+  { id: 'storage', name: '存储配置', icon: DatabaseOutlined, path: '/system/settings/storage' },
+  { id: 'clean', name: '数据清理', icon: DeleteOutlined, path: '/system/settings/clean' },
+  { id: 'mqStatusPolicy', name: '策略配置', icon: LineChartOutlined, path: '/system/settings/mq-status-policy' },
+  { id: 'tokenTool', name: '加解密工具', icon: KeyOutlined, path: '/system/settings/token-tool' },
+  { id: 'about', name: '站点关于', icon: InfoCircleOutlined, path: '/system/settings/about' }
 ]
 
 const titleMap: Record<string, string> = {
@@ -66,10 +74,10 @@ onMounted(() => {
 <template>
   <div class="p-4 lg:p-6 w-full system-settings h-full flex flex-col overflow-hidden">
     <div class="flex items-center justify-between mb-4 flex-shrink-0">
-      <h1 class="text-[18px] font-semibold text-[#1f2937] dark:text-slate-100">系统设置</h1>
+      <h1 class="text-[18px] font-semibold text-foreground">系统设置</h1>
       <button
         type="button"
-        class="w-7 h-7 flex items-center justify-center rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-800"
+        class="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-[var(--motion-fast)]"
         @click="handleClose"
         aria-label="关闭系统设置"
       >
@@ -85,7 +93,7 @@ onMounted(() => {
             :key="item.id"
             type="button"
             class="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors"
-            :class="activeTab === item.id ? 'bg-brand text-white' : 'text-gray-700 dark:text-slate-200 hover:bg-[#f1f5f9] dark:hover:bg-slate-800'"
+            :class="activeTab === item.id ? 'bg-brand text-white' : 'text-foreground hover:bg-muted'"
             @click="handleOpen(item.path)"
           >
             <component :is="item.icon" class="w-4 h-4" />
@@ -94,12 +102,12 @@ onMounted(() => {
         </div>
       </div>
       <!-- 右侧内容区：独立滚动 -->
-      <div class="right-content flex-1 min-w-0 w-full lg:border-l border-[#e5e7eb] dark:border-slate-700 lg:pl-5 mt-4 lg:mt-0 flex flex-col min-h-0 overflow-hidden">
+      <div class="right-content flex-1 min-w-0 w-full lg:border-l weak-divider lg:pl-5 mt-4 lg:mt-0 flex flex-col min-h-0 overflow-hidden">
         <transition name="settings-fade" mode="out-in">
           <div :key="route.path" class="flex-1 flex flex-col gap-4 overflow-y-auto pr-2">
             <div v-if="showParentHeader && activeTitle" class="space-y-1 flex-shrink-0">
-              <h2 class="text-[16px] font-semibold text-[#1f2937] dark:text-slate-100">{{ activeTitle }}</h2>
-              <p class="text-[12px] text-[#6b7280] dark:text-slate-400">{{ activeDescription }}</p>
+              <h2 class="text-[16px] font-semibold text-foreground">{{ activeTitle }}</h2>
+              <p class="text-[12px] text-muted-foreground">{{ activeDescription }}</p>
             </div>
             <div class="flex-1 min-h-0">
               <router-view />

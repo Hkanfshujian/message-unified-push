@@ -112,7 +112,7 @@ onMounted(async () => {
 
 <template>
   <div class="space-y-2">
-    <div class="rounded border border-slate-300 dark:border-slate-600 overflow-x-auto">
+    <div class="rounded border weak-divider overflow-x-auto">
       <Table class="data-table border-collapse">
         <TableHeader>
           <TableRow>

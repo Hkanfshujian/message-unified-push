@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { HomeIcon, ArrowLeftIcon } from 'lucide-vue-next'
+import { HomeOutlined, ArrowLeftOutlined } from '@ant-design/icons-vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -35,11 +35,11 @@ const goBack = () => {
         </p>
         <div class="flex flex-col sm:flex-row gap-3 justify-center">
           <Button @click="goHome" class="flex items-center gap-2">
-            <HomeIcon class="w-4 h-4" />
+            <HomeOutlined class="text-[16px]" />
             返回首页
           </Button>
           <Button @click="goBack" variant="outline" class="flex items-center gap-2">
-            <ArrowLeftIcon class="w-4 h-4" />
+            <ArrowLeftOutlined class="text-[16px]" />
             返回上页
           </Button>
         </div>

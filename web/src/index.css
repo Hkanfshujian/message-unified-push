@@ -76,6 +76,9 @@
   --ring: oklch(0.708 0 0);
   --radius: 0.75rem;
   --table-border: #cbd5e1;
+  --line-weak: rgba(100, 116, 139, 0.2);
+  --motion-fast: 150ms;
+  --motion-normal: 220ms;
 
   --brand: #1890ff;
   --brand-foreground: #ffffff;
@@ -118,11 +121,13 @@
   --input: oklch(0.26 0 0);
   --ring: oklch(0.40 0 0);
   --table-border: #475569;
+  --line-weak: rgba(148, 163, 184, 0.22);
 }
 
 @layer base {
   * {
-    @apply border-border/60 outline-ring/30 transition-colors duration-200;
+    @apply border-border/60 outline-ring/30 transition-colors duration-[var(--motion-fast)];
+    transition-duration: var(--motion-fast);
   }
 
   html, body, #app {
@@ -137,7 +142,7 @@
 
   /* 品牌色交互组件增强 */
   .btn-brand-premium {
-    @apply bg-brand text-brand-foreground shadow-md hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300;
+    @apply bg-brand text-brand-foreground shadow-md hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 transition-all duration-[var(--motion-normal)];
   }
 }
 
@@ -266,7 +271,7 @@
     color: var(--foreground);
     font-weight: 600;
     padding: 10px 16px;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--line-weak);
   }
 
   /* 表头列分隔线：伪元素，上下留白不接触行边框 */
@@ -277,11 +282,11 @@
     top: 18%;
     height: 64%;
     width: 1px;
-    background-color: var(--table-border);
+    background-color: var(--line-weak);
   }
 
   .data-table tbody tr {
-    border-bottom: 1px solid var(--table-border) !important;
+    border-bottom: 1px solid var(--line-weak) !important;
   }
 
   .data-table tbody tr:last-child {
@@ -305,7 +310,58 @@
     top: 18%;
     height: 64%;
     width: 1px;
-    background-color: var(--table-border);
+    background-color: var(--line-weak);
+  }
+
+  .weak-divider {
+    border-color: var(--line-weak) !important;
+  }
+
+  [data-slot="table-head"],
+  [data-slot="table-row"],
+  [data-slot="table-footer"] {
+    border-color: var(--line-weak) !important;
+  }
+
+  [data-slot="table-head"],
+  [data-slot="table-cell"],
+  [data-slot="input"],
+  [data-slot="textarea"],
+  [data-slot="select-trigger"],
+  [data-slot="button"] {
+    transition-duration: var(--motion-fast);
+  }
+
+  [data-slot="dialog-overlay"],
+  [data-slot="sheet-overlay"],
+  [data-slot="drawer-overlay"] {
+    background: color-mix(in srgb, #000 56%, transparent);
+    transition-duration: var(--motion-normal);
+  }
+
+  [data-slot="dialog-overlay"][data-state="open"],
+  [data-slot="dialog-overlay"][data-state="closed"],
+  [data-slot="sheet-overlay"][data-state="open"],
+  [data-slot="sheet-overlay"][data-state="closed"],
+  [data-slot="drawer-overlay"][data-state="open"],
+  [data-slot="drawer-overlay"][data-state="closed"] {
+    animation-duration: var(--motion-normal);
+  }
+
+  [data-slot="dialog-content"],
+  [data-slot="sheet-content"],
+  [data-slot="drawer-content"] {
+    border-color: var(--line-weak);
+    transition-duration: var(--motion-normal);
+  }
+
+  [data-slot="dialog-content"][data-state="open"],
+  [data-slot="dialog-content"][data-state="closed"],
+  [data-slot="sheet-content"][data-state="open"],
+  [data-slot="sheet-content"][data-state="closed"],
+  [data-slot="drawer-content"][data-state="open"],
+  [data-slot="drawer-content"][data-state="closed"] {
+    animation-duration: var(--motion-normal);
   }
 
   .pagination {

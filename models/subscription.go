@@ -76,9 +76,17 @@ func AddSubscription(name, sourceID, topic, tag, groupName, validateRegex, extra
 }
 
 // GetSubscriptions 获取订阅列表
-func GetSubscriptions(pageNum, pageSize int, name, sourceID, status, templateID string) ([]Subscription, error) {
+func GetSubscriptions(pageNum, pageSize int, name, sourceID, status, templateID string, dateRange ...string) ([]Subscription, error) {
 	var subscriptions []Subscription
 	query := db.Model(&Subscription{})
+
+	startTime, endTime := "", ""
+	if len(dateRange) > 0 {
+		startTime = dateRange[0]
+	}
+	if len(dateRange) > 1 {
+		endTime = dateRange[1]
+	}
 
 	if name != "" {
 		query = query.Where("name LIKE ?", "%"+name+"%")
@@ -91,6 +99,12 @@ func GetSubscriptions(pageNum, pageSize int, name, sourceID, status, templateID 
 	}
 	if templateID != "" {
 		query = query.Where("template_id = ?", templateID)
+	}
+	if startTime != "" {
+		query = query.Where("created_on >= ?", startTime)
+	}
+	if endTime != "" {
+		query = query.Where("created_on <= ?", endTime)
 	}
 
 	query = query.Order("created_on DESC")
@@ -106,9 +120,17 @@ func GetSubscriptions(pageNum, pageSize int, name, sourceID, status, templateID 
 }
 
 // GetSubscriptionsTotal 获取订阅总数
-func GetSubscriptionsTotal(name, sourceID, status, templateID string) (int64, error) {
+func GetSubscriptionsTotal(name, sourceID, status, templateID string, dateRange ...string) (int64, error) {
 	var total int64
 	query := db.Model(&Subscription{})
+
+	startTime, endTime := "", ""
+	if len(dateRange) > 0 {
+		startTime = dateRange[0]
+	}
+	if len(dateRange) > 1 {
+		endTime = dateRange[1]
+	}
 
 	if name != "" {
 		query = query.Where("name LIKE ?", "%"+name+"%")
@@ -121,6 +143,12 @@ func GetSubscriptionsTotal(name, sourceID, status, templateID string) (int64, er
 	}
 	if templateID != "" {
 		query = query.Where("template_id = ?", templateID)
+	}
+	if startTime != "" {
+		query = query.Where("created_on >= ?", startTime)
+	}
+	if endTime != "" {
+		query = query.Where("created_on <= ?", endTime)
 	}
 
 	err := query.Count(&total).Error

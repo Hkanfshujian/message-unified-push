@@ -10,6 +10,7 @@ import EmptyTableState from '@/components/ui/EmptyTableState.vue'
 import Pagination from '@/components/ui/Pagination.vue'
 import DateTimePicker from '@/components/ui/DateTimePicker.vue'
 import { request } from '@/api/api'
+import { useRoute, useRouter } from 'vue-router'
 // @ts-ignore
 import { getPageSize } from '@/util/pageUtils'
 
@@ -32,6 +33,8 @@ let state = reactive({
   pageSize: getPageSize(),
   search: '',
 })
+const route = useRoute()
+const router = useRouter()
 
 // 过滤条件
 const selectedMatched = ref('all')
@@ -61,6 +64,30 @@ const selectedLog = ref<ConsumeLogItem | null>(null)
 // 总页数
 const totalPages = computed(() => Math.ceil(state.total / state.pageSize))
 
+const parsePositiveNumber = (value: unknown, fallback: number) => {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return fallback
+  return Math.floor(n)
+}
+
+const buildRouteQuery = () => {
+  const nextQuery: Record<string, string> = {
+    page: String(state.currPage),
+    page_size: String(state.pageSize),
+  }
+  const name = state.search.trim()
+  if (name) nextQuery.subscription_name = name
+  if (selectedMatched.value && selectedMatched.value !== 'all') nextQuery.matched = selectedMatched.value
+  if (selectedSendStatus.value && selectedSendStatus.value !== 'all') nextQuery.send_status = selectedSendStatus.value
+  if (startTime.value) nextQuery.start_time = startTime.value
+  if (endTime.value) nextQuery.end_time = endTime.value
+  return nextQuery
+}
+
+const syncRouteQuery = async () => {
+  await router.replace({ path: route.path, query: buildRouteQuery() })
+}
+
 // 获取匹配状态文本
 const getMatchedText = (matched: number) => {
   return matched === 1 ? '已匹配' : '未匹配'
@@ -70,7 +97,7 @@ const getMatchedText = (matched: number) => {
 const getMatchedClass = (matched: number) => {
   return matched === 1
     ? 'bg-green-100 text-green-800 border-green-200'
-    : 'bg-gray-100 text-gray-700 border-gray-200'
+    : 'bg-muted text-muted-foreground border-[var(--line-weak)]'
 }
 
 // 获取发送状态文本
@@ -87,7 +114,7 @@ const getSendStatusText = (status: number) => {
 const getSendStatusClass = (status: number) => {
   if (status === 1) return 'bg-green-100 text-green-800 border-green-200'
   if (status === 2) return 'bg-red-100 text-red-700 border-red-200'
-  return 'bg-gray-100 text-gray-700 border-gray-200'
+  return 'bg-muted text-muted-foreground border-[var(--line-weak)]'
 }
 
 // 打开日志详情
@@ -99,6 +126,7 @@ const openLogSheet = (item: ConsumeLogItem) => {
 // 查询数据
 const queryListData = async (page: number, size: number, subscriptionName = '', matched = '', sendStatus = '') => {
   try {
+    await syncRouteQuery()
     let params: any = { page, page_size: size }
     
     if (subscriptionName) params.subscription_name = subscriptionName
@@ -178,6 +206,7 @@ const clearTimeFilter = async () => {
   const today = getTodayRange()
   startTime.value = today.start
   endTime.value = today.end
+  state.currPage = 1
   await filterFunc()
 }
 
@@ -191,8 +220,15 @@ const formatExtractedValues = (values: string) => {
   }
 }
 
-onMounted(() => {
-  queryListDataWithStatus()
+onMounted(async () => {
+  state.search = route.query.subscription_name?.toString() || ''
+  selectedMatched.value = route.query.matched?.toString() || 'all'
+  selectedSendStatus.value = route.query.send_status?.toString() || 'all'
+  state.currPage = parsePositiveNumber(route.query.page, 1)
+  state.pageSize = parsePositiveNumber(route.query.page_size, state.pageSize)
+  startTime.value = route.query.start_time?.toString() || startTime.value
+  endTime.value = route.query.end_time?.toString() || endTime.value
+  await queryListDataWithStatus()
 })
 </script>
 
@@ -259,7 +295,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="rounded border border-slate-300 dark:border-slate-600 overflow-x-auto">
+    <div class="rounded border weak-divider overflow-x-auto">
       <Table class="data-table border-collapse">
         <TableHeader>
           <TableRow>

@@ -16,6 +16,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { request } from '@/api/api';
 // @ts-ignore
 import { getPageSize } from '@/util/pageUtils';
+import { appendDateRangeQuery, pickDateRangeQuery } from '@/util/routeQuery'
 
 
 interface CronMessageItem {
@@ -69,6 +70,27 @@ const handleSaveCronMessage = (_data: any) => {
 // 总页数
 const totalPages = computed(() => Math.ceil(state.total / state.pageSize))
 
+const parsePositiveNumber = (value: unknown, fallback: number) => {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return fallback
+  return Math.floor(n)
+}
+
+const buildRouteQuery = () => {
+  const nextQuery: Record<string, string> = {}
+  const name = state.search.trim()
+  if (name) nextQuery.name = name
+  if (selectedStatus.value && selectedStatus.value !== 'all') nextQuery.status = selectedStatus.value
+  nextQuery.page = String(state.currPage)
+  nextQuery.size = String(state.pageSize)
+  appendDateRangeQuery(nextQuery, route.query as Record<string, unknown>)
+  return nextQuery
+}
+
+const syncRouteQuery = async () => {
+  await router.replace({ path: route.path, query: buildRouteQuery() })
+}
+
 // 打开编辑定时消息Dialog
 const openEditCronMessageDialog = (cronMessage: CronMessageItem) => {
   editCronMessageData.value = cronMessage
@@ -105,7 +127,7 @@ const showDeleteError = computed(() => {
 // 处理查看日志
 const handleViewLogs = (cronMessage: CronMessageItem) => {
   // 跳转到定时消息日志页面，携带cronMessageId参数
-  router.push(`/sendlogs?taskid=${cronMessage.id}`)
+  router.push(`/logs/task?taskid=${cronMessage.id}`)
 }
 
 // 切换状态
@@ -125,6 +147,7 @@ const toggleStatus = async (cronMessage: CronMessageItem) => {
 const changePage = async (page: number) => {
   if (page >= 1 && page <= totalPages.value) {
     state.currPage = page
+    await syncRouteQuery()
     await queryListDataWithStatus()
   }
 }
@@ -133,28 +156,34 @@ const handlePageSizeChange = async (size: number) => {
   if (size <= 0) return
   state.pageSize = size
   state.currPage = 1
+  await syncRouteQuery()
   await queryListDataWithStatus()
 }
 
 //触发过滤筛选
 const filterFunc = async () => {
-  await queryListData(state.currPage, state.pageSize, state.search, state.optionValue);
+  state.currPage = 1
+  await syncRouteQuery()
+  await queryListDataWithStatus()
 }
 
 // 查询数据（包含状态过滤）
 const queryListDataWithStatus = async () => {
-  const statusParam = selectedStatus.value === 'all' ? '' : selectedStatus.value;
-  await queryListData(state.currPage, state.pageSize, state.search, '', '', statusParam);
+  const statusParam = selectedStatus.value === 'all' ? '' : selectedStatus.value
+  await queryListData(state.currPage, state.pageSize, state.search, statusParam)
 }
 
-const queryListData = async (page: number, size: number, name = '', taskType = '', query = '', status = '') => {
-  let params: any = { page: page, size: size, name: name, type: taskType, query: query };
+const queryListData = async (page: number, size: number, name = '', status = '') => {
+  const params: any = { page, size, name }
   if (status !== '') {
-    params.status = status;
+    params.status = status
   }
-  const rsp = await request.get('/cronmessages/list', { params: params });
-  state.tableData = rsp?.data?.data?.lists || [];
-  state.total = rsp?.data?.data?.total || 0;
+  const { startTime, endTime } = pickDateRangeQuery(route.query as Record<string, unknown>)
+  if (startTime) params.start_time = startTime
+  if (endTime) params.end_time = endTime
+  const rsp = await request.get('/cronmessages/list', { params })
+  state.tableData = rsp?.data?.data?.lists || []
+  state.total = rsp?.data?.data?.total || 0
 }
 
 // 删除定时消息
@@ -162,9 +191,7 @@ const handleDelete = async (id: string) => {
   const rsp = await request.post('/cronmessages/delete', { id: id });
   if (rsp.status == 200 && await rsp.data.code == 200) {
     toast.success(rsp.data.msg);
-    setTimeout(() => {
-      window.location.reload();
-    }, 1000);
+    await queryListDataWithStatus()
   }
 }
 
@@ -176,15 +203,13 @@ const handleConfirmDelete = async () => {
 
 
 onMounted(async () => {
-  // 初始化查询
-  state.search = route.query.name?.toString() || '';
-  await queryListData(
-    1,
-    state.pageSize,
-    route.query.name?.toString() || '',
-    route.query.task_type?.toString() || ''
-  );
-});
+  state.search = route.query.name?.toString() || ''
+  selectedStatus.value = route.query.status?.toString() || 'all'
+  state.currPage = parsePositiveNumber(route.query.page, 1)
+  state.pageSize = parsePositiveNumber(route.query.size, state.pageSize)
+  await syncRouteQuery()
+  await queryListDataWithStatus()
+})
 
 </script>
 
@@ -223,7 +248,7 @@ onMounted(async () => {
       </Dialog>
     </div>
 
-    <div class="rounded border border-slate-300 dark:border-slate-600 overflow-x-auto">
+    <div class="rounded border weak-divider overflow-x-auto">
       <div class="min-w-full">
         <Table class="data-table border-collapse">
           <TableHeader>
@@ -276,7 +301,7 @@ onMounted(async () => {
                 <Button v-permission="'message:cron:edit'" size="sm" variant="outline" @click="openEditCronMessageDialog(cronMessage)">编辑</Button>
                 <Button v-permission="'message:cron:delete'" size="sm" variant="outline" class="text-red-500 border-red-300 hover:bg-red-50 
                   hover:border-red-400 hover:text-red-600 hover:shadow-md
-                   transition-all duration-200" @click="openDeleteConfirm(cronMessage)">删除</Button>
+                   transition-all duration-[var(--motion-fast)]" @click="openDeleteConfirm(cronMessage)">删除</Button>
                 <Switch v-permission="'message:cron:edit'" :model-value="cronMessage.enable === 1" @update:model-value="toggleStatus(cronMessage)" />
 
               </TableCell>
@@ -317,7 +342,7 @@ onMounted(async () => {
           <DialogTitle>确认删除定时消息</DialogTitle>
         </DialogHeader>
         <div class="space-y-2">
-          <div class="text-sm text-gray-600">
+          <div class="text-sm text-muted-foreground">
             请输入要删除的定时消息名称
             <span v-if="deleteTarget?.name" class="text-red-500 font-semibold mx-1">{{ deleteTarget.name }}</span>
             以确认操作

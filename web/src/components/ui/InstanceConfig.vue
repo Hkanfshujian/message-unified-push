@@ -635,7 +635,7 @@ defineExpose({
     <!-- 渠道配置表单 -->
     <div v-if="currentChannelConfig" class="mt-4">
       <!-- 动态接收者勾选框 -->
-      <div v-if="currentDynamicRecipient?.support" class="mb-4 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800/50">
+      <div v-if="currentDynamicRecipient?.support" class="mb-4 p-3 border rounded-lg bg-muted/50 dark:bg-muted/30">
         <div class="flex items-center space-x-2">
           <Switch 
             :model-value="formData.allowMultiRecip" 
@@ -646,7 +646,7 @@ defineExpose({
             动态接收者模式
           </Label>
         </div>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-8">
+        <p class="text-xs text-muted-foreground mt-1 ml-8">
           {{ formData.allowMultiRecip ? '支持动态接收者，发送时通过API指定接收者列表（群发模式）' : '固定接收者模式，需要在下方配置固定接收者' }}
         </p>
         <p v-if="formData.allowMultiRecip" class="text-xs text-orange-500 dark:text-orange-400 mt-1 ml-8 font-medium">
@@ -656,10 +656,10 @@ defineExpose({
 
       <!-- 接收者输入字段 -->
       <div v-if="shouldShowRecipientInput" class="mb-2">
-        <Label class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">实例配置</Label>
+        <Label class="text-sm font-medium text-foreground mb-1">实例配置</Label>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="space-y-2">
-            <label class="text-xs font-medium text-gray-600 dark:text-gray-400">
+            <label class="text-xs font-medium text-muted-foreground">
               {{ currentDynamicRecipient?.label }}
             </label>
             <Input 
@@ -753,7 +753,7 @@ defineExpose({
                 <Button 
                   size="sm" 
                   variant="outline" 
-                  class="text-red-500 border-red-300 hover:bg-red-50 hover:border-red-400 hover:text-red-600 hover:shadow-md transition-all duration-200" 
+                  class="text-red-500 border-red-300 hover:bg-red-50 hover:border-red-400 hover:text-red-600 hover:shadow-md transition-all duration-[var(--motion-fast)]" 
                   @click="handleDeleteIns(ins.id)"
                 >
                   删除

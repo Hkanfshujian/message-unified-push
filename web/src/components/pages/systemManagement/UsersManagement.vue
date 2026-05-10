@@ -220,7 +220,7 @@ onMounted(async () => {
       <Button @click="openAdd">新增用户</Button>
     </div>
 
-    <div class="rounded border border-slate-300 dark:border-slate-600 overflow-x-auto">
+    <div class="rounded border weak-divider overflow-x-auto">
       <Table class="data-table border-collapse">
       <TableHeader>
         <TableRow>
@@ -246,7 +246,7 @@ onMounted(async () => {
             <span v-else-if="item.channel === 'oidc'" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
               OIDC
             </span>
-            <span v-else class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200">
+            <span v-else class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-foreground">
               本地
             </span>
           </TableCell>
@@ -293,7 +293,7 @@ onMounted(async () => {
           <DialogTitle>确认删除用户</DialogTitle>
         </DialogHeader>
         <div class="space-y-2">
-          <div class="text-sm text-gray-600">
+          <div class="text-sm text-muted-foreground">
             请输入用户名
             <span class="text-red-500 mx-1">{{ deleteTarget?.username }}</span>
             以确认删除

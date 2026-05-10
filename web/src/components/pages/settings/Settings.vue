@@ -59,12 +59,12 @@ const handleClose = () => {
   <div class="p-6 w-full max-w-6xl mx-auto system-settings">
     <!-- 顶部标题与关闭按钮 -->
     <div class="flex items-center justify-between mb-4">
-      <h1 class="text-[18px] font-semibold text-[#1f2937] dark:text-slate-100">
+      <h1 class="text-[18px] font-semibold text-foreground">
         系统设置
       </h1>
       <button
         type="button"
-        class="w-7 h-7 flex items-center justify-center rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-800"
+        class="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-[var(--motion-fast)]"
         @click="handleClose"
         aria-label="关闭系统设置"
       >
@@ -81,15 +81,15 @@ const handleClose = () => {
       </div>
 
       <div
-        class="right-content lg:flex-[3] w-full lg:border-l border-[#e5e7eb] dark:border-slate-700 lg:pl-6 mt-6 lg:mt-0 flex flex-col min-h-0"
+        class="right-content lg:flex-[3] w-full lg:border-l weak-divider lg:pl-6 mt-6 lg:mt-0 flex flex-col min-h-0"
       >
         <transition name="settings-fade" mode="out-in">
           <div :key="activeTab" class="flex-1 flex flex-col gap-4">
             <div v-if="activeTitle" class="space-y-1">
-              <h2 class="text-[16px] font-semibold text-[#1f2937] dark:text-slate-100">
+              <h2 class="text-[16px] font-semibold text-foreground">
                 {{ activeTitle }}
               </h2>
-              <p class="text-[12px] text-[#6b7280] dark:text-slate-400">
+              <p class="text-[12px] text-muted-foreground">
                 {{ activeDescription }}
               </p>
             </div>
@@ -112,7 +112,7 @@ const handleClose = () => {
 <style scoped>
 .settings-fade-enter-active,
 .settings-fade-leave-active {
-  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+  transition: opacity var(--motion-fast) ease-out, transform var(--motion-fast) ease-out;
 }
 
 .settings-fade-enter-from,

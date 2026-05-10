@@ -22,11 +22,12 @@ func (c *SubscriptionController) GetSubscriptionList(ctx *gin.Context) {
 	name := ctx.Query("name")
 	status := ctx.Query("status")
 	sourceID := ctx.Query("source_id")
+	startTime, endTime := pickDateRangeQuery(ctx)
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(ctx.DefaultQuery("page_size", "20"))
 
 	service := subscription_service.SubscriptionService{}
-	subscriptions, total, err := service.GetAll(name, status, sourceID, page, pageSize)
+	subscriptions, total, err := service.GetAll(name, status, sourceID, startTime, endTime, page, pageSize)
 	if err != nil {
 		appG.CResponse(http.StatusInternalServerError, e.GetMsg(e.ERROR_GET_SUBSCRIPTION_FAIL), nil)
 		return

@@ -20,6 +20,8 @@ type TemplateService struct {
 	IsAtAll          bool
 	Status           string
 	Text             string
+	StartTime        string
+	EndTime          string
 	
 	PageNum  int
 	PageSize int
@@ -247,6 +249,12 @@ func (s *TemplateService) getMaps() map[string]interface{} {
 	
 	if s.Status != "" {
 		maps["status"] = s.Status
+	}
+	if s.StartTime != "" {
+		maps["start_time"] = s.StartTime
+	}
+	if s.EndTime != "" {
+		maps["end_time"] = s.EndTime
 	}
 	
 	return maps

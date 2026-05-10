@@ -1,9 +1,9 @@
 package v1
 
 import (
+	"net/http"
 	"ops-message-unified-push/pkg/e"
 	"ops-message-unified-push/pkg/util"
-	"net/http"
 
 	"ops-message-unified-push/pkg/app"
 	"ops-message-unified-push/service/cron_msg_service"
@@ -46,12 +46,17 @@ func DeleteCronMsgTask(c *gin.Context) {
 func GetCronMsgList(c *gin.Context) {
 	appG := app.Gin{C: c}
 	name := c.Query("name")
+	status := c.Query("status")
+	startTime, endTime := pickDateRangeQuery(c)
 
 	offset, limit := util.GetPageSize(c)
 	CronMsgService := cron_msg_service.CronMsgService{
-		Name:     name,
-		PageNum:  offset,
-		PageSize: limit,
+		Name:      name,
+		PageNum:   offset,
+		PageSize:  limit,
+		Status:    status,
+		StartTime: startTime,
+		EndTime:   endTime,
 	}
 	tasks, err := CronMsgService.GetAll()
 	if err != nil {

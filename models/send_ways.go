@@ -15,6 +15,18 @@ type SendWays struct {
 	Auth string `json:"auth" gorm:"type:varchar(2048) ;default:'';"`
 }
 
+func extractDateRangeFromConditions(conditions interface{}) (interface{}, string, string) {
+	typed, ok := conditions.(map[string]interface{})
+	if !ok {
+		return conditions, "", ""
+	}
+	startTime, _ := typed["start_time"].(string)
+	endTime, _ := typed["end_time"].(string)
+	delete(typed, "start_time")
+	delete(typed, "end_time")
+	return typed, startTime, endTime
+}
+
 func GenerateWayUniqueID() string {
 	newUUID := util.GenerateUniqueID()
 	return fmt.Sprintf("WY%s", newUUID)
@@ -43,7 +55,14 @@ func GetSendWays(pageNum int, pageSize int, name string, type_ string, maps inte
 		ways []SendWays
 		err  error
 	)
-	query := db.Where(maps)
+	conds, startTime, endTime := extractDateRangeFromConditions(maps)
+	query := db.Where(conds)
+	if startTime != "" {
+		query = query.Where("created_on >= ?", startTime)
+	}
+	if endTime != "" {
+		query = query.Where("created_on <= ?", endTime)
+	}
 	if name != "" {
 		query = query.Where("name like ?", fmt.Sprintf("%%%s%%", name))
 	}
@@ -68,7 +87,14 @@ func GetSendWaysTotal(name string, type_ string, maps interface{}) (int64, error
 		err   error
 		total int64
 	)
-	query := db.Model(&SendWays{}).Where(maps)
+	conds, startTime, endTime := extractDateRangeFromConditions(maps)
+	query := db.Model(&SendWays{}).Where(conds)
+	if startTime != "" {
+		query = query.Where("created_on >= ?", startTime)
+	}
+	if endTime != "" {
+		query = query.Where("created_on <= ?", endTime)
+	}
 	if name != "" {
 		query = query.Where("name like ?", fmt.Sprintf("%%%s%%", name))
 	}

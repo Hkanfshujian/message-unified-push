@@ -4,7 +4,7 @@ import { request } from '@/api/api'
 import { toast } from 'vue-sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { CheckIcon } from 'lucide-vue-next'
+import { CheckOutlined } from '@ant-design/icons-vue'
 import { THEMES, applyTheme, getStoredTheme } from '@/util/theme'
 
 const modeOptions = [
@@ -175,7 +175,7 @@ watch(
 <template>
   <div class="space-y-5">
     <!-- 主题颜色 -->
-    <div class="rounded-lg border border-slate-300/80 dark:border-slate-700 p-4 space-y-3 bg-white/70 dark:bg-slate-900/30">
+    <div class="rounded-lg border weak-divider p-4 space-y-3 bg-background/70 dark:bg-muted/30">
       <div class="text-sm font-semibold">主题颜色</div>
       <div class="space-y-3">
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -183,7 +183,7 @@ watch(
             v-for="t in THEMES"
             :key="t.key"
             @click="changeTheme(t.key)"
-            class="group relative flex items-center gap-2.5 p-2.5 rounded-lg border transition-all duration-200"
+            class="group relative flex items-center gap-2.5 p-2.5 rounded-lg border transition-all duration-[var(--motion-normal)]"
             :class="[
               currentThemeColor === t.key
                 ? 'border-brand bg-brand/5 shadow-sm ring-1 ring-brand/20'
@@ -196,11 +196,11 @@ watch(
               :class="currentThemeColor === t.key ? 'text-brand' : 'text-foreground/80'">{{ t.name }}</span>
             <div v-if="currentThemeColor === t.key"
               class="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-brand text-white flex items-center justify-center shadow-sm">
-              <CheckIcon class="w-2 h-2" />
+              <CheckOutlined class="text-[8px]" />
             </div>
           </button>
           <button
-            class="group relative flex items-center gap-2.5 p-2.5 rounded-lg border transition-all duration-200"
+            class="group relative flex items-center gap-2.5 p-2.5 rounded-lg border transition-all duration-[var(--motion-normal)]"
             :class="[
               currentThemeColor.startsWith('custom:')
                 ? 'border-brand bg-brand/5 shadow-sm ring-1 ring-brand/20'
@@ -226,7 +226,7 @@ watch(
     </div>
 
     <!-- 主题模式 -->
-    <div class="rounded-lg border border-slate-300/80 dark:border-slate-700 p-4 space-y-3 bg-white/70 dark:bg-slate-900/30">
+    <div class="rounded-lg border weak-divider p-4 space-y-3 bg-background/70 dark:bg-muted/30">
       <div class="text-sm font-semibold">主题模式</div>
       <div class="flex items-center gap-2 flex-wrap">
         <button
@@ -234,7 +234,7 @@ watch(
           :key="mode.value"
           type="button"
           class="px-3 py-1.5 text-sm rounded border transition-colors"
-          :class="state.theme_mode === mode.value ? 'border-brand bg-brand/5 dark:bg-slate-800' : 'border-border hover:border-brand/40'"
+          :class="state.theme_mode === mode.value ? 'border-brand bg-brand/5 dark:bg-muted/70' : 'border-border hover:border-brand/40'"
           @click="state.theme_mode = mode.value"
         >
           {{ mode.label }}
@@ -243,7 +243,7 @@ watch(
     </div>
 
     <!-- 侧边栏背景色 -->
-    <div class="rounded-lg border border-slate-300/80 dark:border-slate-700 p-4 space-y-3 bg-white/70 dark:bg-slate-900/30">
+    <div class="rounded-lg border weak-divider p-4 space-y-3 bg-background/70 dark:bg-muted/30">
       <div class="text-sm font-semibold">侧边栏背景色</div>
       <div class="space-y-2">
         <div v-if="sidebarPresets.length" class="flex flex-wrap gap-2">

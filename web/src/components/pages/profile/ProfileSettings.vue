@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { KeyRound, Palette } from 'lucide-vue-next'
+import { KeyOutlined, BgColorsOutlined } from '@ant-design/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
 const menu = [
-  { id: 'password', name: '修改密码', icon: KeyRound, path: '/profile/settings/password' },
-  { id: 'preference', name: '个性设置', icon: Palette, path: '/profile/settings/preference' }
+  { id: 'password', name: '修改密码', icon: KeyOutlined, path: '/profile/settings/password' },
+  { id: 'preference', name: '个性设置', icon: BgColorsOutlined, path: '/profile/settings/preference' }
 ]
 
 const titleMap: Record<string, string> = {
@@ -40,10 +40,10 @@ const handleOpen = (path: string) => {
 <template>
   <div class="p-4 lg:p-6 w-full profile-settings">
     <div class="flex items-center justify-between mb-4">
-      <h1 class="text-[18px] font-semibold text-[#1f2937] dark:text-slate-100">个人设置</h1>
+      <h1 class="text-[18px] font-semibold text-foreground">个人设置</h1>
       <button
         type="button"
-        class="w-7 h-7 flex items-center justify-center rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-slate-800"
+        class="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-[var(--motion-fast)]"
         @click="handleClose"
         aria-label="关闭个人设置"
       >
@@ -57,8 +57,8 @@ const handleOpen = (path: string) => {
             v-for="item in menu"
             :key="item.id"
             type="button"
-            class="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors"
-            :class="activeTab === item.id ? 'bg-[#3b82f6] text-white' : 'text-gray-700 dark:text-slate-200 hover:bg-[#f1f5f9] dark:hover:bg-slate-800'"
+            class="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors duration-[var(--motion-fast)]"
+            :class="activeTab === item.id ? 'bg-brand text-white' : 'text-foreground/80 hover:bg-muted'"
             @click="handleOpen(item.path)"
           >
             <component :is="item.icon" class="w-4 h-4" />
@@ -66,12 +66,12 @@ const handleOpen = (path: string) => {
           </button>
         </div>
       </div>
-      <div class="right-content flex-1 min-w-0 w-full lg:border-l border-[#e5e7eb] dark:border-slate-700 lg:pl-5 mt-4 lg:mt-0 flex flex-col min-h-0">
+      <div class="right-content flex-1 min-w-0 w-full lg:border-l weak-divider lg:pl-5 mt-4 lg:mt-0 flex flex-col min-h-0">
         <transition name="settings-fade" mode="out-in">
           <div :key="route.path" class="flex-1 flex flex-col gap-4">
             <div v-if="activeTitle" class="space-y-1">
-              <h2 class="text-[16px] font-semibold text-[#1f2937] dark:text-slate-100">{{ activeTitle }}</h2>
-              <p class="text-[12px] text-[#6b7280] dark:text-slate-400">{{ activeDescription }}</p>
+              <h2 class="text-[16px] font-semibold text-foreground">{{ activeTitle }}</h2>
+              <p class="text-[12px] text-muted-foreground">{{ activeDescription }}</p>
             </div>
             <div class="flex-1 min-h-0">
               <router-view />

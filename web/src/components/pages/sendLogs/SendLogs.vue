@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, reactive, onMounted } from 'vue'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -67,6 +67,12 @@ const selectedTaskName = ref('')
 const totalPages = computed(() => Math.ceil(state.total / state.pageSize))
 const hasTemplateFilter = computed(() => String(state.optionValue || '').trim() !== '')
 
+const parsePositiveNumber = (value: unknown, fallback: number) => {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return fallback
+  return Math.floor(n)
+}
+
 const getStatusText = (status: number) => {
   return status === 1 ? '成功' : '失败'
 }
@@ -95,15 +101,28 @@ const openLogSheet = (task: LogItem) => {
   isSheetOpen.value = true
 }
 
+const buildRouteQuery = () => {
+  const nextQuery: Record<string, string> = {
+    page: String(state.currPage),
+    size: String(state.pageSize),
+  }
+  const name = state.search.trim()
+  if (name) nextQuery.name = name
+  if (state.optionValue) nextQuery.taskid = state.optionValue
+  if (selectedStatus.value && selectedStatus.value !== 'all') nextQuery.status = selectedStatus.value
+  if (startTime.value) nextQuery.start_time = startTime.value
+  if (endTime.value) nextQuery.end_time = endTime.value
+  return nextQuery
+}
+
+const syncRouteQuery = async () => {
+  await router.replace({ path: route.path, query: buildRouteQuery() })
+}
+
 const changePage = async (page: number) => {
   if (page >= 1 && page <= totalPages.value) {
     state.currPage = page
-    await queryListData(
-      state.currPage,
-      state.pageSize,
-      state.search,
-      state.optionValue
-    )
+    await queryListDataWithStatus()
   }
 }
 
@@ -111,12 +130,7 @@ const handlePageSizeChange = async (size: number) => {
   if (size <= 0) return
   state.pageSize = size
   state.currPage = 1
-  await queryListData(
-    state.currPage,
-    state.pageSize,
-    state.search,
-    state.optionValue
-  )
+  await queryListDataWithStatus()
 }
 
 // 格式化处理显示的日志文本
@@ -131,30 +145,22 @@ const formatLogDisplayHtml = (task: LogItem) => {
 
 //触发过滤筛选
 const filterFunc = async () => {
-  await queryListData(state.currPage, state.pageSize, state.search, state.optionValue);
+  state.currPage = 1
+  await queryListDataWithStatus()
 }
 
 // 按状态过滤
 const filterByStatus = async (value: any) => {
   selectedStatus.value = value;
   state.currPage = 1; // 重置到第一页
-  await queryListData(state.currPage, state.pageSize, state.search, state.optionValue);
+  await queryListDataWithStatus()
 }
 
-const queryListData = async (page: number, size: number, name = '', taskid = '', query = '', _status = '') => {
-  let params: any = { page: page, size: size, name: name, taskid: taskid };
-  
-  // 优先使用URL传入的query参数（包含日期筛选等）
-  if (query) {
-    params.query = query;
-  } else if (selectedStatus.value !== '' && selectedStatus.value !== 'all') {
-    // 如果没有URL query参数，使用当前选择的状态筛选
-    params.query = JSON.stringify({
-      status: selectedStatus.value
-    });
+const queryListData = async (page: number, size: number, name = '', taskid = '') => {
+  const params: any = { page, size, name, taskid }
+  if (selectedStatus.value !== '' && selectedStatus.value !== 'all') {
+    params.status = selectedStatus.value
   }
-
-  // 添加时间范围参数
   if (startTime.value) {
     params.start_time = startTime.value
   }
@@ -162,23 +168,22 @@ const queryListData = async (page: number, size: number, name = '', taskid = '',
     params.end_time = endTime.value
   }
 
-  const rsp = await request.get('/sendlogs/list', { params: params });
-  
-  // 清空现有数据
-  state.tableData = [];
-  
-  // 使用 nextTick 确保响应式更新
-  await nextTick();
-  
-  // 更新数据
-  state.tableData = rsp.data.data.lists || [];
-  state.total = rsp.data.data.total;
+  const rsp = await request.get('/sendlogs/list', { params })
+  state.tableData = rsp.data.data.lists || []
+  state.total = rsp.data.data.total
+}
+
+const queryListDataWithStatus = async (shouldSyncRoute = true) => {
+  if (shouldSyncRoute) {
+    await syncRouteQuery()
+  }
+  await queryListData(state.currPage, state.pageSize, state.search, state.optionValue)
 }
 
 const clearTemplateFilter = async () => {
-  const nextQuery: any = { ...route.query }
-  delete nextQuery.taskid
-  await router.replace({ path: '/logs/task', query: nextQuery })
+  state.optionValue = ''
+  state.currPage = 1
+  await queryListDataWithStatus()
 }
 
 // 清除时间过滤 - 恢复当天
@@ -186,48 +191,38 @@ const clearTimeFilter = async () => {
   const today = getTodayRange()
   startTime.value = today.start
   endTime.value = today.end
-  await filterFunc()
+  state.currPage = 1
+  await queryListDataWithStatus()
 }
 
-// 解析URL参数并更新筛选状态
-const parseUrlParams = async () => {
-  state.search = route.query.name?.toString() || '';
-  // 保存 taskid 到 state，用于后续过滤
-  state.optionValue = route.query.taskid?.toString() || '';
-  
-  // 解析URL中的query参数，设置状态筛选
-  const queryParam = route.query.query?.toString() || '';
-  if (queryParam) {
-    try {
-      const queryObj = JSON.parse(decodeURIComponent(queryParam));
-      if (queryObj.status !== undefined) {
-        selectedStatus.value = queryObj.status.toString();
-      }
-    } catch (error) {
-      console.warn('解析query参数失败:', error);
-    }
-  } else {
-    // 如果没有query参数，重置为全部
-    selectedStatus.value = 'all';
-  }
-  
-  await queryListData(
-    1,
-    state.pageSize,
-    state.search,
-    state.optionValue,
-    queryParam
-  );
-};
-
-// 监听路由变化
-watch(() => route.query, () => {
-  parseUrlParams();
-}, { deep: true });
-
 onMounted(async () => {
-  await parseUrlParams();
-});
+  state.search = route.query.name?.toString() || ''
+  state.optionValue = route.query.taskid?.toString() || ''
+  state.currPage = parsePositiveNumber(route.query.page, 1)
+  state.pageSize = parsePositiveNumber(route.query.size, state.pageSize)
+  startTime.value = route.query.start_time?.toString() || startTime.value
+  endTime.value = route.query.end_time?.toString() || endTime.value
+
+  const explicitStatus = route.query.status?.toString()
+  if (explicitStatus && explicitStatus !== 'all') {
+    selectedStatus.value = explicitStatus
+  } else {
+    selectedStatus.value = 'all'
+    const legacyQuery = route.query.query?.toString() || ''
+    if (legacyQuery) {
+      try {
+        const queryObj = JSON.parse(decodeURIComponent(legacyQuery))
+        if (queryObj.status !== undefined) {
+          selectedStatus.value = queryObj.status.toString()
+        }
+      } catch (error) {
+        console.warn('解析旧版query参数失败:', error)
+      }
+    }
+  }
+
+  await queryListDataWithStatus()
+})
 </script>
 
 <template>
@@ -285,7 +280,7 @@ onMounted(async () => {
     </div>
 
     <!-- 表格 -->
-    <div class="rounded border border-slate-300 dark:border-slate-600 overflow-x-auto">
+    <div class="rounded border weak-divider overflow-x-auto">
       <Table class="data-table border-collapse">
       <TableHeader>
         <TableRow>
@@ -307,7 +302,7 @@ onMounted(async () => {
               description="还没有任何发信日志记录" 
             >
               <template #icon>
-                <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                 </svg>
               </template>

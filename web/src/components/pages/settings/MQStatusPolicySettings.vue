@@ -81,7 +81,7 @@ onMounted(() => {
 
 <template>
   <div class="space-y-5">
-    <div class="rounded-lg border border-slate-300/80 dark:border-slate-700 p-4 space-y-4 bg-white/70 dark:bg-slate-900/30">
+    <div class="rounded-lg border weak-divider p-4 space-y-4 bg-background/70 dark:bg-muted/30">
       <div class="text-sm font-semibold">消息队列状态更新策略</div>
 
       <div class="flex items-center justify-between">
@@ -95,7 +95,7 @@ onMounted(() => {
       </div>
 
       <div v-if="enabledBool" class="space-y-2">
-        <label class="text-sm font-medium text-slate-700 dark:text-slate-200">自动更新频率（秒）</label>
+        <label class="text-sm font-medium text-foreground">自动更新频率（秒）</label>
         <Input
           v-model="state.interval_seconds"
           type="number"
@@ -109,7 +109,7 @@ onMounted(() => {
       </div>
 
       <div class="space-y-2">
-        <label class="text-sm font-medium text-slate-700 dark:text-slate-200">日志级别</label>
+        <label class="text-sm font-medium text-foreground">日志级别</label>
         <Select v-model="state.log_level" :disabled="loading || saving">
           <SelectTrigger>
             <SelectValue placeholder="选择日志级别" />

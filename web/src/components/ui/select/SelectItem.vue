@@ -2,7 +2,7 @@
 import type { SelectItemProps } from "reka-ui"
 import type { HTMLAttributes } from "vue"
 import { reactiveOmit } from "@vueuse/core"
-import { Check } from "lucide-vue-next"
+import { CheckOutlined } from "@ant-design/icons-vue"
 import {
   SelectItem,
   SelectItemIndicator,
@@ -32,7 +32,7 @@ const forwardedProps = useForwardProps(delegatedProps)
   >
     <span class="absolute right-2 flex size-3.5 items-center justify-center">
       <SelectItemIndicator>
-        <Check class="size-3.5 text-white" />
+        <CheckOutlined class="text-[14px] text-white" />
       </SelectItemIndicator>
     </span>
 

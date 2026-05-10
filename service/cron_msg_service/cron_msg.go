@@ -3,6 +3,7 @@ package cron_msg_service
 import (
 	"github.com/robfig/cron/v3"
 	"ops-message-unified-push/models"
+	"strings"
 	"time"
 )
 
@@ -27,8 +28,11 @@ type CronMsgService struct {
 	ModifiedBy string
 	CreatedOn  string
 
-	PageNum  int
-	PageSize int
+	PageNum   int
+	PageSize  int
+	Status    string
+	StartTime string
+	EndTime   string
 }
 
 func (st *CronMsgService) Add() (string, error) {
@@ -44,11 +48,11 @@ func (st *CronMsgService) GetByID() (models.CronMessages, error) {
 }
 
 func (st *CronMsgService) Count() (int64, error) {
-	return models.GetCronMessagesTotal(st.Name, st.getMaps())
+	return models.GetCronMessagesTotal(st.Name, st.getMaps(), st.StartTime, st.EndTime)
 }
 
 func (st *CronMsgService) GetAll() ([]CronMsgResult, error) {
-	msgs, err := models.GetCronMessages(st.PageNum, st.PageSize, st.Name, st.getMaps())
+	msgs, err := models.GetCronMessages(st.PageNum, st.PageSize, st.Name, st.getMaps(), st.StartTime, st.EndTime)
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +99,12 @@ func (st *CronMsgService) FillNextExecTime(msgs []models.CronMessages, templateN
 
 func (st *CronMsgService) getMaps() map[string]interface{} {
 	maps := make(map[string]interface{})
+	switch strings.TrimSpace(strings.ToLower(st.Status)) {
+	case "1", "enabled", "enable", "on":
+		maps["enable"] = 1
+	case "0", "disabled", "disable", "off":
+		maps["enable"] = 0
+	}
 	return maps
 }
 

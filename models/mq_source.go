@@ -59,9 +59,16 @@ func AddMQSource(name, mqType, namesrvAddr, accessKey, secretKey, createdBy stri
 }
 
 // GetMQSources 获取数据源列表
-func GetMQSources(pageNum, pageSize int, name, mqType, status string) ([]MQSource, error) {
+func GetMQSources(pageNum, pageSize int, name, mqType, status string, dateRange ...string) ([]MQSource, error) {
 	var sources []MQSource
 	query := db.Model(&MQSource{})
+	startTime, endTime := "", ""
+	if len(dateRange) > 0 {
+		startTime = dateRange[0]
+	}
+	if len(dateRange) > 1 {
+		endTime = dateRange[1]
+	}
 
 	if name != "" {
 		query = query.Where("name LIKE ?", "%"+name+"%")
@@ -75,6 +82,12 @@ func GetMQSources(pageNum, pageSize int, name, mqType, status string) ([]MQSourc
 		} else {
 			query = query.Where("last_test_status = ?", status)
 		}
+	}
+	if startTime != "" {
+		query = query.Where("created_on >= ?", startTime)
+	}
+	if endTime != "" {
+		query = query.Where("created_on <= ?", endTime)
 	}
 
 	query = query.Order("created_on DESC")
@@ -90,9 +103,16 @@ func GetMQSources(pageNum, pageSize int, name, mqType, status string) ([]MQSourc
 }
 
 // GetMQSourcesTotal 获取数据源总数
-func GetMQSourcesTotal(name, mqType, status string) (int64, error) {
+func GetMQSourcesTotal(name, mqType, status string, dateRange ...string) (int64, error) {
 	var total int64
 	query := db.Model(&MQSource{})
+	startTime, endTime := "", ""
+	if len(dateRange) > 0 {
+		startTime = dateRange[0]
+	}
+	if len(dateRange) > 1 {
+		endTime = dateRange[1]
+	}
 
 	if name != "" {
 		query = query.Where("name LIKE ?", "%"+name+"%")
@@ -106,6 +126,12 @@ func GetMQSourcesTotal(name, mqType, status string) (int64, error) {
 		} else {
 			query = query.Where("last_test_status = ?", status)
 		}
+	}
+	if startTime != "" {
+		query = query.Where("created_on >= ?", startTime)
+	}
+	if endTime != "" {
+		query = query.Where("created_on <= ?", endTime)
 	}
 
 	err := query.Count(&total).Error

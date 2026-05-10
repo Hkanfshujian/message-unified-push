@@ -134,7 +134,7 @@ export default defineComponent({
 <template>
   <Dialog :open="open" @update:open="handleUpdateOpen">
     <DialogContent class="w-[min(855px,98vw)] !max-w-[98vw] sm:!max-w-[98vw] max-h-[90vh] overflow-hidden flex flex-col">
-      <DialogHeader class="flex-shrink-0 border-b border-border/60 pb-3">
+      <DialogHeader class="flex-shrink-0 border-b weak-divider pb-3">
         <DialogTitle class="flex items-center gap-2 text-lg sm:text-xl">
           <span>模板API接口</span>
           <Badge v-if="templateData" variant="outline">{{ templateData.name }}</Badge>
@@ -144,20 +144,20 @@ export default defineComponent({
 
       <div class="space-y-5 flex-1 overflow-y-auto pr-1 sm:pr-2 mt-4">
         <!-- API 信息概览 -->
-        <div class="border border-border/60 rounded-xl p-4 space-y-3 bg-muted/20">
+        <div class="border weak-divider rounded-xl p-4 space-y-3 bg-muted/20">
           <div class="flex items-center gap-2 flex-wrap">
             <Badge variant="default">POST</Badge>
-            <code class="text-sm bg-gray-100 dark:bg-slate-800 px-2 py-1 rounded">/api/v2/message/send</code>
+            <code class="text-sm bg-muted dark:bg-muted/20 px-2 py-1 rounded">/api/v2/message/send</code>
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-muted-foreground">
-            <p><strong class="text-foreground">模板ID:</strong> <code class="bg-gray-100 dark:bg-slate-800 px-1 py-0.5 rounded">{{ templateData?.id }}</code></p>
+            <p><strong class="text-foreground">模板ID:</strong> <code class="bg-muted dark:bg-muted/20 px-1 py-0.5 rounded">{{ templateData?.id }}</code></p>
             <p><strong class="text-foreground">必填参数:</strong> token, title, placeholders</p>
             <p><strong class="text-foreground">可选参数:</strong> recipients, wait_result</p>
             <p class="text-amber-600 dark:text-amber-400"><strong>⚠️ 注意:</strong> 使用加密 token，不支持明文模板ID</p>
           </div>
           
           <!-- 已启用的渠道列表 -->
-          <div v-if="enabledChannelNames.length > 0" class="mt-2 pt-3 border-t border-border/60">
+          <div v-if="enabledChannelNames.length > 0" class="mt-2 pt-3 border-t weak-divider">
             <p class="text-xs font-medium text-muted-foreground mb-2">已启用发送渠道</p>
             <div class="flex flex-wrap gap-2">
               <Badge 
@@ -170,13 +170,13 @@ export default defineComponent({
               </Badge>
             </div>
           </div>
-          <div v-else class="mt-2 pt-3 border-t border-border/60">
+          <div v-else class="mt-2 pt-3 border-t weak-divider">
             <p class="text-xs text-amber-600 dark:text-amber-400">⚠️ 该模板暂无启用的发送渠道</p>
           </div>
         </div>
 
         <!-- 可选参数 -->
-        <div v-if="hasDynamicRecipientInstance" class="border border-border/60 rounded-xl p-4 bg-muted/20">
+        <div v-if="hasDynamicRecipientInstance" class="border weak-divider rounded-xl p-4 bg-muted/20">
           <h3 class="font-semibold mb-3">可选参数</h3>
           <div class="flex flex-wrap gap-4">
             <label class="flex items-center gap-2 cursor-not-allowed opacity-75">
@@ -197,7 +197,7 @@ export default defineComponent({
         </div>
 
         <!-- 代码示例 -->
-        <div class="space-y-4 border border-border/60 rounded-xl p-4 bg-muted/10">
+        <div class="space-y-4 border weak-divider rounded-xl p-4 bg-muted/10">
           <div class="flex items-center justify-between">
             <h3 class="font-semibold">代码示例</h3>
             <Tabs v-model="codeStyle" class="w-40">
@@ -219,13 +219,13 @@ export default defineComponent({
             </TabsList>
 
             <TabsContent v-for="lang in codeLanguages" :key="lang.value" :value="lang.value" class="mt-4">
-              <div class="relative rounded-xl border border-slate-800 overflow-hidden">
+              <div class="relative rounded-xl border weak-divider overflow-hidden">
                 <Button size="sm" variant="secondary" class="absolute top-2 right-2 z-10"
                   @click="copyToClipboard(generateApiCode(lang.value))">
                   复制代码
                 </Button>
                 <pre
-                  class="bg-gray-950 text-gray-100 p-4 overflow-x-auto text-xs leading-relaxed max-w-full whitespace-pre-wrap break-words"><code class="text-xs font-mono">{{ generateApiCode(lang.value) }}</code></pre>
+                  class="bg-foreground text-background p-4 overflow-x-auto text-xs leading-relaxed max-w-full whitespace-pre-wrap break-words"><code class="text-xs font-mono">{{ generateApiCode(lang.value) }}</code></pre>
               </div>
             </TabsContent>
           </Tabs>

@@ -2,23 +2,24 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  LayoutDashboard,
-  MessageSquare,
-  Clock,
-  FileText,
-  Share2,
-  ScrollText,
-  Settings,
-  Shield,
-  Users,
-  KeyRound,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  User,
-  Database,
-  Rss
-} from 'lucide-vue-next'
+  DashboardOutlined,
+  MessageOutlined,
+  CalendarOutlined,
+  CodeOutlined,
+  SendOutlined,
+  FileTextOutlined,
+  SettingOutlined,
+  SafetyCertificateOutlined,
+  TeamOutlined,
+  KeyOutlined,
+  DownOutlined,
+  DatabaseOutlined,
+  NotificationOutlined,
+  AppstoreOutlined,
+  FileSearchOutlined,
+  LoginOutlined,
+  UserOutlined
+} from '@ant-design/icons-vue'
 import { cn } from '@/lib/utils'
 import { useRbacAuthzStore } from '@/store/rbac_authz'
 
@@ -30,16 +31,10 @@ const props = defineProps<{
   userAccount: string
 }>()
 
-const emit = defineEmits<{
-  (e: 'toggle-collapse'): void
-  (e: 'logout'): void
-}>()
-
 const route = useRoute()
 const router = useRouter()
 const rbacAuthzStore = useRbacAuthzStore()
 const openMenus = ref<Record<string, boolean>>({})
-const isUserMenuOpen = ref(false)
 
 interface MenuItem {
   title: string
@@ -54,25 +49,25 @@ const menuItems: MenuItem[] = [
   {
     title: '数据统计',
     path: '/',
-    icon: LayoutDashboard,
+    icon: DashboardOutlined,
     requiredPermissions: ['dashboard:view']
   },
   {
     title: '消息管理',
-    icon: MessageSquare,
+    icon: MessageOutlined,
     children: [
       {
         title: '定时消息',
         path: '/cronmessages',
         name: 'cronmessages',
-        icon: Clock,
+        icon: CalendarOutlined,
         requiredPermissions: ['message:cron:view']
       },
       {
         title: '订阅消息',
         path: '/message/subscriptions',
         name: 'message-subscriptions',
-        icon: Rss,
+        icon: NotificationOutlined,
         requiredPermissions: ['data:subscription:view']
       }
     ]
@@ -80,91 +75,91 @@ const menuItems: MenuItem[] = [
   {
     title: '模板管理',
     path: '/templates',
-    icon: FileText,
+    icon: CodeOutlined,
     requiredPermissions: ['message:template:view']
   },
   {
     title: '渠道管理',
     path: '/sendways',
-    icon: Share2,
+    icon: SendOutlined,
     requiredPermissions: ['message:sendways:view']
   },
   {
     title: '数据管理',
-    icon: Database,
+    icon: DatabaseOutlined,
     requiredPermissions: ['data:mq-source:view'],
     children: [
       {
         title: '消息队列',
         path: '/data/mq-sources',
         name: 'data-mq-sources',
-        icon: Database,
+        icon: AppstoreOutlined,
         requiredPermissions: ['data:mq-source:view']
       }
     ]
   },
   {
     title: '日志管理',
-    icon: ScrollText,
+    icon: FileTextOutlined,
     requiredPermissions: ['message:sendlogs:view'],
     children: [
       {
         title: '任务日志',
         path: '/logs/task',
-        icon: ScrollText,
+        icon: FileSearchOutlined,
         requiredPermissions: ['message:sendlogs:view']
       },
       {
         title: '登录日志',
         path: '/logs/login',
-        icon: ScrollText,
+        icon: LoginOutlined,
         requiredPermissions: ['system:loginlogs:view']
       },
       {
         title: '消费日志',
         path: '/logs/consume',
-        icon: ScrollText,
+        icon: FileTextOutlined,
         requiredPermissions: ['data:consume-log:view']
       }
     ]
   },
   {
     title: '系统管理',
-    icon: Shield,
+    icon: SafetyCertificateOutlined,
     children: [
       {
         title: '用户管理',
         path: '/system/users',
         name: 'system-users',
-        icon: User,
+        icon: UserOutlined,
         requiredPermissions: ['system:rbac:user']
       },
       {
         title: '用户组管理',
         path: '/system/groups',
         name: 'system-groups',
-        icon: Users,
+        icon: TeamOutlined,
         requiredPermissions: ['system:rbac:group']
       },
       {
         title: '角色管理',
         path: '/system/roles',
         name: 'system-roles',
-        icon: Users,
+        icon: SafetyCertificateOutlined,
         requiredPermissions: ['system:rbac:role']
       },
       {
         title: '权限管理',
         path: '/system/permissions',
         name: 'system-permissions',
-        icon: KeyRound,
+        icon: KeyOutlined,
         requiredPermissions: ['system:rbac:permission']
       },
       {
         title: '系统设置',
         path: '/system/settings',
         name: 'system-settings',
-        icon: Settings,
+        icon: SettingOutlined,
         requiredPermissions: ['system:settings:view']
       }
     ]
@@ -258,42 +253,32 @@ const collapsedBrandText = computed(() => {
   return firstChar ? firstChar.toUpperCase() : 'M'
 })
 
-const toggleUserMenu = () => {
-  isUserMenuOpen.value = !isUserMenuOpen.value
-}
+const activeMainClass = 'text-white bg-[linear-gradient(90deg,rgba(35,114,229,0.9)_0%,rgba(32,106,220,0.84)_26%,rgba(27,94,205,0.72)_52%,rgba(22,82,185,0.56)_74%,rgba(18,72,166,0.38)_90%,rgba(15,64,149,0.24)_100%)]'
+const activeGroupClass = 'text-white bg-[linear-gradient(90deg,rgba(31,104,216,0.8)_0%,rgba(28,97,207,0.74)_26%,rgba(24,86,191,0.62)_52%,rgba(20,76,174,0.48)_74%,rgba(16,66,156,0.32)_90%,rgba(13,58,140,0.2)_100%)]'
+const activeChildClass = 'text-white bg-[linear-gradient(90deg,rgba(33,109,222,0.84)_0%,rgba(30,102,213,0.78)_26%,rgba(26,90,197,0.66)_52%,rgba(21,79,179,0.52)_74%,rgba(17,69,160,0.35)_90%,rgba(14,60,143,0.22)_100%)]'
+const menuIconClass = 'text-[17px] leading-none relative z-[1]'
 
-const openProfileSettings = () => {
-  isUserMenuOpen.value = false
-  router.push('/profile/settings')
-}
 </script>
 
 <template>
   <aside
     :class="cn(
-      'sidebar fixed left-0 top-0 z-50 h-screen bg-[var(--sidebar-bg,#001529)] flex flex-col text-white transition-[width] duration-300 ease-in-out',
+      'sidebar fixed left-0 top-0 z-50 h-screen bg-[var(--sidebar-bg,#001529)] flex flex-col text-white transition-[width] duration-[var(--motion-normal)] ease-in-out',
       sidebarClass
     )"
   >
-    <div class="flex items-center justify-between h-14 px-4">
-      <div v-if="!isCollapsed" class="text-[16px] font-bold text-[#1890ff] truncate">
+    <div class="flex items-center h-14 px-4">
+      <div v-if="!isCollapsed" class="text-[16px] font-bold text-brand truncate">
         {{ siteTitle }}
       </div>
       <div
         v-else
-        class="w-6 h-6 bg-[#1890ff] text-white rounded flex items-center justify-center font-bold text-[18px]"
+        class="w-6 h-6 bg-brand text-white rounded flex items-center justify-center font-bold text-[18px]"
       >
         {{ collapsedBrandText }}
       </div>
-      <button
-        @click="emit('toggle-collapse')"
-        class="text-white/70 hover:text-[#1890ff] transition-colors text-[16px] flex items-center justify-center"
-      >
-        <ChevronLeft v-if="!isCollapsed" class="w-4 h-4" />
-        <ChevronRight v-else class="w-4 h-4" />
-      </button>
     </div>
-    <div class="h-px bg-[#434343]" />
+    <div class="h-px bg-white/10" />
 
     <div class="flex-1 overflow-y-auto py-2">
       <nav class="space-y-1 px-2 text-[14px]">
@@ -302,19 +287,15 @@ const openProfileSettings = () => {
             <button
               @click="handleItemClick(item)"
               :class="cn(
-                'w-full flex items-center gap-3 px-3 py-2 rounded transition-colors relative',
+                'w-full flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-[var(--motion-fast)] relative overflow-hidden',
                 isActive(item)
-                  ? 'bg-[#1890ff] text-white'
-                  : 'text-white/85 hover:bg-[#1f2d3d]',
+                  ? activeMainClass
+                  : 'text-white/85 hover:bg-white/10',
                 isCollapsed ? 'justify-center' : 'justify-start'
               )"
             >
-              <span
-                v-if="isActive(item)"
-                class="absolute left-0 top-0 h-full w-[3px] bg-[#40a9ff]"
-              />
-              <component :is="item.icon" class="w-5 h-5" />
-              <span v-if="!isCollapsed" class="truncate">{{ item.title }}</span>
+              <component :is="item.icon" :class="menuIconClass" />
+              <span v-if="!isCollapsed" class="truncate relative z-[1]">{{ item.title }}</span>
             </button>
           </div>
 
@@ -322,19 +303,22 @@ const openProfileSettings = () => {
             <button
               @click="handleItemClick(item)"
               :class="cn(
-                'w-full flex items-center gap-3 px-3 py-2 rounded transition-colors relative',
+                'w-full flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-[var(--motion-fast)] relative overflow-hidden',
                 isActive(item)
-                  ? 'bg-[#1f2d3d] text-white'
-                  : 'text-white/85 hover:bg-[#1f2d3d]',
+                  ? activeGroupClass
+                  : 'text-white/85 hover:bg-white/10',
                 isCollapsed ? 'justify-center' : 'justify-start'
               )"
             >
-              <component :is="item.icon" class="w-5 h-5" />
-              <span v-if="!isCollapsed" class="flex-1 text-left truncate">{{ item.title }}</span>
+              <component :is="item.icon" :class="menuIconClass" />
+              <span v-if="!isCollapsed" class="flex-1 text-left truncate relative z-[1]">{{ item.title }}</span>
               <component
                 v-if="!isCollapsed"
-                :is="ChevronDown"
-                class="w-4 h-4 text-white/70"
+                :is="DownOutlined"
+                :class="cn(
+                  'w-3.5 h-3.5 text-white/70 transition-transform duration-[var(--motion-fast)] relative z-[1]',
+                  isGroupOpen(item) ? 'rotate-180' : ''
+                )"
               />
             </button>
             <div v-if="isGroupOpen(item)" class="mt-1 space-y-1">
@@ -343,20 +327,16 @@ const openProfileSettings = () => {
                 :key="childIndex"
                 @click="handleItemClick(child)"
                 :class="cn(
-                  'w-full flex items-center gap-3 px-3 py-2 rounded transition-colors relative',
+                  'w-full flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-[var(--motion-fast)] relative overflow-hidden',
                   isActive(child)
-                    ? 'bg-[#1890ff] text-white'
-                    : 'text-white/75 hover:bg-[#1f2d3d]',
+                    ? activeChildClass
+                    : 'text-white/75 hover:bg-white/10',
                   isCollapsed ? 'justify-center' : 'justify-start',
                   !isCollapsed ? 'pl-9' : ''
                 )"
               >
-                <span
-                  v-if="isActive(child)"
-                  class="absolute left-0 top-0 h-full w-[3px] bg-[#40a9ff]"
-                />
-              <component :is="child.icon" class="w-5 h-5" />
-                <span v-if="!isCollapsed" class="truncate">{{ child.title }}</span>
+                <component :is="child.icon" :class="menuIconClass" />
+                <span v-if="!isCollapsed" class="truncate relative z-[1]">{{ child.title }}</span>
               </button>
             </div>
           </div>
@@ -364,47 +344,5 @@ const openProfileSettings = () => {
       </nav>
     </div>
 
-    <div class="mt-auto px-3 py-3">
-      <div class="h-px bg-[#434343] mb-3" />
-      <div
-        class="relative flex items-center gap-3 cursor-pointer"
-        @click="toggleUserMenu"
-      >
-        <div
-          :class="[
-            'rounded-full bg-white/10 flex items-center justify-center',
-            isCollapsed ? 'w-6 h-6' : 'w-8 h-8'
-          ]"
-        >
-          <User class="w-4 h-4 text-white" />
-        </div>
-        <div v-if="!isCollapsed" class="flex-1 text-sm font-medium text-white truncate">
-          {{ userAccount }}
-        </div>
-        <div
-          v-if="!isCollapsed"
-          class="flex items-center justify-center"
-        >
-          <ChevronDown class="w-4 h-4 text-white/70" />
-        </div>
-        <div
-          v-if="isUserMenuOpen"
-          class="absolute bottom-10 left-0 w-[160px] rounded bg-[#0f1b2d] border border-[#1f2d3d] shadow-lg"
-        >
-          <button
-            @click="openProfileSettings"
-            class="w-full text-left px-3 py-2 text-sm text-white/90 hover:bg-[#1f2d3d]"
-          >
-            个人设置
-          </button>
-          <button
-            @click="emit('logout')"
-            class="w-full text-left px-3 py-2 text-sm text-white/90 hover:bg-[#1f2d3d]"
-          >
-            退出登录
-          </button>
-        </div>
-      </div>
-    </div>
   </aside>
 </template>

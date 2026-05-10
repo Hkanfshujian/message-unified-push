@@ -8,6 +8,7 @@ import EmptyTableState from '@/components/ui/EmptyTableState.vue'
 import Pagination from '@/components/ui/Pagination.vue'
 import DateTimePicker from '@/components/ui/DateTimePicker.vue'
 import { toast } from 'vue-sonner'
+import { useRoute, useRouter } from 'vue-router'
 
 // @ts-ignore
 import { request } from '@/api/api'
@@ -29,6 +30,8 @@ const ipLoading = ref(false)
 const selectedIp = ref('')
 const ipInfo = ref<any>(null)
 const search = ref('')
+const route = useRoute()
+const router = useRouter()
 
 // 分页状态
 const state = reactive({
@@ -58,9 +61,32 @@ const endTime = ref(todayRange.end)
 // 总页数
 const totalPages = computed(() => Math.ceil(state.total / state.pageSize))
 
+const parsePositiveNumber = (value: unknown, fallback: number) => {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return fallback
+  return Math.floor(n)
+}
+
+const buildRouteQuery = () => {
+  const nextQuery: Record<string, string> = {
+    page: String(state.currPage),
+    page_size: String(state.pageSize),
+  }
+  if (startTime.value) nextQuery.start_time = startTime.value
+  if (endTime.value) nextQuery.end_time = endTime.value
+  const keyword = search.value.trim()
+  if (keyword) nextQuery.keyword = keyword
+  return nextQuery
+}
+
+const syncRouteQuery = async () => {
+  await router.replace({ path: route.path, query: buildRouteQuery() })
+}
+
 const fetchLogs = async () => {
   loading.value = true
   try {
+    await syncRouteQuery()
     const params: any = {
       page: state.currPage,
       page_size: state.pageSize,
@@ -106,7 +132,14 @@ const clearTimeFilter = async () => {
   await fetchLogs()
 }
 
-onMounted(fetchLogs)
+onMounted(async () => {
+  state.currPage = parsePositiveNumber(route.query.page, 1)
+  state.pageSize = parsePositiveNumber(route.query.page_size, state.pageSize)
+  startTime.value = route.query.start_time?.toString() || startTime.value
+  endTime.value = route.query.end_time?.toString() || endTime.value
+  search.value = route.query.keyword?.toString() || ''
+  await fetchLogs()
+})
 
 const displayLogs = computed(() => {
   const keyword = search.value.trim().toLowerCase()
@@ -215,7 +248,7 @@ const ipDisplayRows = computed(() => {
         </Button>
       </div>
     </div>
-    <div class="rounded border border-slate-300 dark:border-slate-600 overflow-x-auto">
+    <div class="rounded border weak-divider overflow-x-auto">
       <Table class="data-table border-collapse">
         <TableHeader>
           <TableRow>

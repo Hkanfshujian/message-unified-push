@@ -10,7 +10,14 @@ import { toast } from 'vue-sonner'
 import { request } from '@/api/api'
 // @ts-ignore
 import { LocalStieConfigUtils } from '@/util/localSiteConfig'
-import { HelpCircleIcon, CheckIcon, CheckCircle2, Circle, ChevronRight, Folder } from 'lucide-vue-next'
+import {
+  QuestionCircleOutlined,
+  CheckOutlined,
+  CheckCircleOutlined,
+  CheckCircleFilled,
+  RightOutlined,
+  FolderOutlined
+} from '@ant-design/icons-vue'
 import { THEMES, applyTheme, getStoredTheme } from '@/util/theme'
 // @ts-ignore
 import config from '../../../../config.js'
@@ -455,9 +462,9 @@ const logoBrowseThumbGridClass = computed(() => {
 })
 
 const logoBrowseThumbPreviewClass = computed(() => {
-  if (logoBrowseThumbSize.value === 'sm') return 'w-full h-20 rounded border bg-slate-50 dark:bg-slate-900 overflow-hidden flex items-center justify-center'
-  if (logoBrowseThumbSize.value === 'lg') return 'w-full h-36 rounded border bg-slate-50 dark:bg-slate-900 overflow-hidden flex items-center justify-center'
-  return 'w-full h-28 rounded border bg-slate-50 dark:bg-slate-900 overflow-hidden flex items-center justify-center'
+  if (logoBrowseThumbSize.value === 'sm') return 'w-full h-20 rounded border weak-divider bg-muted/40 dark:bg-muted/20 overflow-hidden flex items-center justify-center'
+  if (logoBrowseThumbSize.value === 'lg') return 'w-full h-36 rounded border weak-divider bg-muted/40 dark:bg-muted/20 overflow-hidden flex items-center justify-center'
+  return 'w-full h-28 rounded border weak-divider bg-muted/40 dark:bg-muted/20 overflow-hidden flex items-center justify-center'
 })
 
 const logoBrowseThumbFiles = computed(() =>
@@ -648,19 +655,19 @@ export default {
 
 <template>
   <div class="space-y-5">
-    <div class="rounded-lg border border-slate-300/80 dark:border-slate-700 p-4 space-y-3 bg-white/70 dark:bg-slate-900/30">
+    <div class="rounded-lg border weak-divider p-4 space-y-3 bg-background/70 dark:bg-muted/30">
       <div class="text-sm font-semibold">基本设置</div>
       <div class="space-y-4">
         <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-700 dark:text-slate-200">站点标题</label>
+          <label class="text-sm font-medium text-foreground">站点标题</label>
           <Input v-model="state.title" placeholder="请输入自定义的网站标题" />
         </div>
         <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-700 dark:text-slate-200">站点标语</label>
+          <label class="text-sm font-medium text-foreground">站点标语</label>
           <Input v-model="state.slogan" placeholder="请输入自定义的网站slogan" />
-          <div class="flex items-center justify-between rounded-md border border-dashed border-slate-300/80 dark:border-slate-700 px-3 py-2">
+          <div class="flex items-center justify-between rounded-md border border-dashed weak-divider px-3 py-2">
             <div>
-              <div class="text-sm text-gray-700 dark:text-slate-200">菜单侧边栏收起状态左上角显示字母跟随标语首字母</div>
+              <div class="text-sm text-foreground">菜单侧边栏收起状态左上角显示字母跟随标语首字母</div>
               <div class="text-xs text-muted-foreground">开启后优先取标语首字母；关闭后固定使用默认值 M</div>
             </div>
             <Switch
@@ -670,11 +677,11 @@ export default {
           </div>
         </div>
         <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-700 dark:text-slate-200">登录页标题</label>
+          <label class="text-sm font-medium text-foreground">登录页标题</label>
           <Input v-model="state.login_title" placeholder="登录页显示的标题，默认：消 息 统 一 推 送 中 台" />
         </div>
         <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-700 dark:text-slate-200">站点图标</label>
+          <label class="text-sm font-medium text-foreground">站点图标</label>
           <!-- 存储选择 -->
           <div v-if="logoStorageProfiles.length > 0" class="space-y-1">
             <div class="flex items-center justify-between gap-2">
@@ -739,18 +746,18 @@ export default {
             </Button>
             <button
               type="button"
-              class="inline-flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-200"
+              class="inline-flex items-center gap-1.5 text-xs text-foreground/80"
               :title="clearLogoDeleteSource ? '恢复默认图标时同步删除存储中的源文件' : '恢复默认图标时仅清理配置，不删除存储源文件'"
               @click="clearLogoDeleteSource = !clearLogoDeleteSource"
             >
-              <CheckCircle2 v-if="clearLogoDeleteSource" class="w-3.5 h-3.5 text-brand-600" />
-              <Circle v-else class="w-3.5 h-3.5 text-slate-400" />
+              <CheckCircleFilled v-if="clearLogoDeleteSource" class="text-[14px] text-brand-600" />
+              <CheckCircleOutlined v-else class="text-[14px] text-muted-foreground" />
               <span>恢复时同步删除源文件</span>
             </button>
           </div>
           <div class="text-xs text-muted-foreground">支持 jpg/png/webp，最大 2MB，上传后自动裁剪为方图</div>
           <!-- 已上传预览 -->
-          <div v-if="state.logo" class="flex items-center gap-3 rounded border p-2 bg-muted/30">
+          <div v-if="state.logo" class="flex items-center gap-3 rounded border weak-divider p-2 bg-muted/30">
             <!-- 旧数据：SVG 文本，直接渲染 -->
             <div
               v-if="state.logo.trimStart().startsWith('<')"
@@ -772,14 +779,14 @@ export default {
       </div>
     </div>
 
-    <div class="rounded-lg border border-slate-300/80 dark:border-slate-700 p-4 space-y-3 bg-white/70 dark:bg-slate-900/30">
+    <div class="rounded-lg border weak-divider p-4 space-y-3 bg-background/70 dark:bg-muted/30">
       <div class="text-sm font-semibold">个性设置</div>
       <div class="space-y-4">
         <div class="space-y-3">
-          <label class="text-sm font-medium text-gray-700 dark:text-slate-200">主题色</label>
+          <label class="text-sm font-medium text-foreground">主题色</label>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <button v-for="t in THEMES" :key="t.key" @click="changeTheme(t.key)"
-              class="group relative flex items-center gap-2.5 p-2.5 rounded-lg border transition-all duration-200"
+              class="group relative flex items-center gap-2.5 p-2.5 rounded-lg border transition-all duration-[var(--motion-normal)]"
               :class="[
                 currentThemeColor === t.key
                   ? 'border-brand bg-brand/5 shadow-sm ring-1 ring-brand/20'
@@ -791,11 +798,11 @@ export default {
                 :class="currentThemeColor === t.key ? 'text-brand' : 'text-foreground/80'">{{ t.name }}</span>
               <div v-if="currentThemeColor === t.key"
                 class="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-brand text-white flex items-center justify-center shadow-sm">
-                <CheckIcon class="w-2 h-2" />
+                <CheckOutlined class="text-[8px]" />
               </div>
             </button>
             <button
-              class="group relative flex items-center gap-2.5 p-2.5 rounded-lg border transition-all duration-200"
+              class="group relative flex items-center gap-2.5 p-2.5 rounded-lg border transition-all duration-[var(--motion-normal)]"
               :class="[
                 currentThemeColor.startsWith('custom:')
                   ? 'border-brand bg-brand/5 shadow-sm ring-1 ring-brand/20'
@@ -820,7 +827,7 @@ export default {
         </div>
 
         <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-700 dark:text-slate-200">侧边栏背景色</label>
+          <label class="text-sm font-medium text-foreground">侧边栏背景色</label>
           <div v-if="sidebarPresets.length" class="flex flex-wrap gap-2">
             <button
               v-for="preset in sidebarPresets"
@@ -870,24 +877,24 @@ export default {
       </div>
     </div>
 
-    <div class="rounded-lg border border-slate-300/80 dark:border-slate-700 p-4 space-y-3 bg-white/70 dark:bg-slate-900/30">
+    <div class="rounded-lg border weak-divider p-4 space-y-3 bg-background/70 dark:bg-muted/30">
       <div class="text-sm font-semibold">系统参数</div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-700 dark:text-slate-200">分页大小</label>
+          <label class="text-sm font-medium text-foreground">分页大小</label>
           <Input v-model="state.pagesize" placeholder="页面分页大小" />
         </div>
         <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-700 dark:text-slate-200">Cookie过期天数</label>
+          <label class="text-sm font-medium text-foreground">Cookie过期天数</label>
           <Input v-model="state.cookieExpDays" type="number" min="1" max="365" placeholder="Cookie过期天数（默认1天）" />
         </div>
       </div>
     </div>
 
-    <div class="rounded-lg border border-slate-300/80 dark:border-slate-700 p-4 space-y-3 bg-white/70 dark:bg-slate-900/30">
+    <div class="rounded-lg border weak-divider p-4 space-y-3 bg-background/70 dark:bg-muted/30">
       <div class="text-sm font-semibold">渠道测试默认文案</div>
       <div class="space-y-2">
-        <label class="text-sm font-medium text-gray-700 dark:text-slate-200">测试消息正文</label>
+        <label class="text-sm font-medium text-foreground">测试消息正文</label>
         <Textarea
           v-model="state.channel_test_message"
           :max-length="2000"
@@ -901,13 +908,13 @@ export default {
       </div>
     </div>
 
-    <div class="flex items-center justify-between pt-2 border-t border-slate-200/80 dark:border-slate-700/80">
+    <div class="flex items-center justify-between pt-2 border-t weak-divider">
       <div class="flex items-center space-x-2">
-        <span class="text-sm text-gray-600 dark:text-slate-300">说明</span>
+        <span class="text-sm text-muted-foreground">说明</span>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger>
-              <HelpCircleIcon class="w-4 h-4 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200" />
+              <QuestionCircleOutlined class="text-[14px] text-muted-foreground hover:text-foreground transition-colors duration-[var(--motion-fast)]" />
             </TooltipTrigger>
             <TooltipContent class="max-w-sm">
               <div class="text-sm space-y-1">
@@ -933,7 +940,7 @@ export default {
       <DialogHeader>
         <DialogTitle>确认恢复默认站点图标</DialogTitle>
       </DialogHeader>
-      <div class="space-y-2 text-sm text-slate-700 dark:text-slate-200">
+      <div class="space-y-2 text-sm text-foreground/80">
         <div>恢复后站点将使用默认图标。</div>
         <div v-if="clearLogoDeleteSource" class="text-red-500">同时会删除存储中的源文件，此操作不可恢复。</div>
       </div>
@@ -947,7 +954,7 @@ export default {
   <!-- 从存储浏览选择站点图标 -->
   <Dialog :open="logoBrowseDialogOpen" @update:open="(value) => logoBrowseDialogOpen = value">
     <DialogContent class="w-[min(855px,98vw)] !max-w-[98vw] sm:!max-w-[98vw] max-h-[90vh] overflow-hidden flex flex-col">
-      <DialogHeader class="flex-shrink-0 border-b border-border/60 pb-3">
+      <DialogHeader class="flex-shrink-0 border-b border-[var(--line-weak)] pb-3">
         <DialogTitle>从存储选择站点图标</DialogTitle>
       </DialogHeader>
       <div class="flex-1 overflow-y-auto mt-4 space-y-3">
@@ -963,8 +970,8 @@ export default {
             :disabled="logoBrowseLoading"
             @click="openLogoBrowseBreadcrumb(crumb.path)"
           >
-            <ChevronRight v-if="index > 0" class="w-3.5 h-3.5" />
-            <Folder v-if="index === 0" class="w-3.5 h-3.5" />
+            <RightOutlined v-if="index > 0" class="text-[13px]" />
+            <FolderOutlined v-if="index === 0" class="text-[13px]" />
             <span class="max-w-[220px] truncate align-bottom">{{ crumb.label }}</span>
           </button>
         </div>
@@ -973,11 +980,11 @@ export default {
             返回上级
           </Button>
           <Input v-model="logoBrowseKeyword" class="h-8 w-full" placeholder="按名称筛选目录/图片" />
-          <div class="inline-flex items-center gap-1 rounded border p-1">
+          <div class="inline-flex items-center gap-1 rounded border weak-divider p-1">
             <button
               type="button"
               class="px-2 py-1 text-xs rounded"
-              :class="logoBrowseViewMode === 'list' ? 'bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-brand-300' : 'text-muted-foreground'"
+              :class="logoBrowseViewMode === 'list' ? 'bg-brand-50 text-brand-600 dark:bg-muted/70 dark:text-brand-300' : 'text-muted-foreground'"
               @click="logoBrowseViewMode = 'list'"
             >
               列表
@@ -985,20 +992,20 @@ export default {
             <button
               type="button"
               class="px-2 py-1 text-xs rounded"
-              :class="logoBrowseViewMode === 'thumb' ? 'bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-brand-300' : 'text-muted-foreground'"
+              :class="logoBrowseViewMode === 'thumb' ? 'bg-brand-50 text-brand-600 dark:bg-muted/70 dark:text-brand-300' : 'text-muted-foreground'"
               @click="logoBrowseViewMode = 'thumb'"
             >
               缩略图
             </button>
           </div>
           <div
-            class="inline-flex w-[132px] items-center gap-1 rounded border p-1 transition-opacity"
+            class="inline-flex w-[132px] items-center gap-1 rounded border weak-divider p-1 transition-opacity"
             :class="logoBrowseViewMode === 'thumb' ? 'opacity-100' : 'opacity-0 pointer-events-none'"
           >
             <button
               type="button"
               class="px-2 py-1 text-xs rounded"
-              :class="logoBrowseThumbSize === 'sm' ? 'bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-brand-300' : 'text-muted-foreground'"
+              :class="logoBrowseThumbSize === 'sm' ? 'bg-brand-50 text-brand-600 dark:bg-muted/70 dark:text-brand-300' : 'text-muted-foreground'"
               @click="logoBrowseThumbSize = 'sm'"
             >
               小
@@ -1006,7 +1013,7 @@ export default {
             <button
               type="button"
               class="px-2 py-1 text-xs rounded"
-              :class="logoBrowseThumbSize === 'md' ? 'bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-brand-300' : 'text-muted-foreground'"
+              :class="logoBrowseThumbSize === 'md' ? 'bg-brand-50 text-brand-600 dark:bg-muted/70 dark:text-brand-300' : 'text-muted-foreground'"
               @click="logoBrowseThumbSize = 'md'"
             >
               中
@@ -1014,7 +1021,7 @@ export default {
             <button
               type="button"
               class="px-2 py-1 text-xs rounded"
-              :class="logoBrowseThumbSize === 'lg' ? 'bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-brand-300' : 'text-muted-foreground'"
+              :class="logoBrowseThumbSize === 'lg' ? 'bg-brand-50 text-brand-600 dark:bg-muted/70 dark:text-brand-300' : 'text-muted-foreground'"
               @click="logoBrowseThumbSize = 'lg'"
             >
               大
@@ -1032,7 +1039,7 @@ export default {
                 class="w-full text-left px-3 py-2 hover:bg-muted/50"
                 @click="openLogoBrowseChild(item)"
               >
-                <div class="text-sm flex items-center gap-2"><Folder class="w-4 h-4" />{{ item.name }}</div>
+                <div class="text-sm flex items-center gap-2"><FolderOutlined class="text-[16px]" />{{ item.name }}</div>
                 <div class="text-xs text-muted-foreground">/{{ item.relative_path }}</div>
               </button>
               <div v-if="!filteredLogoBrowseDirectories.length" class="px-3 py-3 text-xs text-muted-foreground">暂无目录</div>
@@ -1058,17 +1065,17 @@ export default {
             </div>
           </div>
         </div>
-        <div v-else class="rounded border max-h-[56vh] overflow-y-auto p-3 space-y-3">
+        <div v-else class="rounded border weak-divider max-h-[56vh] overflow-y-auto p-3 space-y-3">
           <div v-if="filteredLogoBrowseDirectories.length > 0" class="grid grid-cols-2 md:grid-cols-3 gap-2">
             <button
               v-for="item in filteredLogoBrowseDirectories"
               :key="`thumb-dir-${item.relative_path}`"
               type="button"
-              class="rounded border px-3 py-2 text-left hover:bg-slate-50/80 dark:hover:bg-slate-900/40"
+              class="rounded border weak-divider px-3 py-2 text-left hover:bg-muted/60 dark:hover:bg-muted/30"
               @click="openLogoBrowseChild(item)"
             >
               <div class="inline-flex h-8 w-8 items-center justify-center rounded border border-brand-200 bg-brand-50 text-brand-600 dark:border-brand-700/60 dark:bg-brand-900/30 dark:text-brand-300">
-                <Folder class="w-4 h-4" />
+                <FolderOutlined class="text-[16px]" />
               </div>
               <div class="mt-1 text-sm truncate font-medium">{{ item.name }}</div>
             </button>
@@ -1077,7 +1084,7 @@ export default {
             <div
               v-for="file in logoBrowseThumbFiles"
               :key="`thumb-file-${file.object_key || file.relative_path}`"
-              class="rounded border p-2 space-y-2"
+              class="rounded border weak-divider p-2 space-y-2"
             >
               <div :class="logoBrowseThumbPreviewClass">
                 <img
@@ -1102,7 +1109,7 @@ export default {
           </div>
         </div>
       </div>
-      <DialogFooter class="flex-shrink-0 border-t border-border/60 pt-3">
+      <DialogFooter class="flex-shrink-0 border-t border-[var(--line-weak)] pt-3">
         <Button type="button" variant="outline" @click="logoBrowseDialogOpen = false">关闭</Button>
       </DialogFooter>
     </DialogContent>
@@ -1117,7 +1124,7 @@ export default {
       <div class="space-y-3">
         <div class="text-xs text-muted-foreground">{{ logoCropImageName }}</div>
         <div
-          class="w-[260px] h-[260px] border rounded-md overflow-hidden relative bg-slate-100 dark:bg-slate-900 mx-auto touch-none select-none"
+          class="w-[260px] h-[260px] border rounded-md overflow-hidden relative bg-muted dark:bg-muted/20 mx-auto touch-none select-none"
           @pointerdown="onLogoCropPointerDown"
           @pointermove="onLogoCropPointerMove"
           @pointerup="stopLogoCropDragging"
@@ -1135,11 +1142,11 @@ export default {
               transform: `translate(${logoCropOffsetX}px, ${logoCropOffsetY}px)`
             }"
           >
-          <div class="absolute inset-0 pointer-events-none border border-white/60 dark:border-slate-200/50"></div>
-          <div class="absolute top-0 bottom-0 left-1/3 w-px bg-white/45 dark:bg-slate-200/35 pointer-events-none"></div>
-          <div class="absolute top-0 bottom-0 left-2/3 w-px bg-white/45 dark:bg-slate-200/35 pointer-events-none"></div>
-          <div class="absolute left-0 right-0 top-1/3 h-px bg-white/45 dark:bg-slate-200/35 pointer-events-none"></div>
-          <div class="absolute left-0 right-0 top-2/3 h-px bg-white/45 dark:bg-slate-200/35 pointer-events-none"></div>
+          <div class="absolute inset-0 pointer-events-none border border-white/60 dark:border-muted-foreground/40"></div>
+          <div class="absolute top-0 bottom-0 left-1/3 w-px bg-white/45 dark:bg-muted-foreground/30 pointer-events-none"></div>
+          <div class="absolute top-0 bottom-0 left-2/3 w-px bg-white/45 dark:bg-muted-foreground/30 pointer-events-none"></div>
+          <div class="absolute left-0 right-0 top-1/3 h-px bg-white/45 dark:bg-muted-foreground/30 pointer-events-none"></div>
+          <div class="absolute left-0 right-0 top-2/3 h-px bg-white/45 dark:bg-muted-foreground/30 pointer-events-none"></div>
         </div>
         <div class="space-y-2">
           <div class="flex items-center justify-between text-xs text-muted-foreground">

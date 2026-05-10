@@ -55,11 +55,11 @@ export default {
       <div class="text-lg font-semibold">加解密工具</div>
       <div class="text-sm text-muted-foreground">在这里可以方便地进行模板ID与加密token之间的转换，用于对接接口调试。</div>
     </div>
-    <div class="rounded-lg border border-slate-300/80 dark:border-slate-700 p-4 space-y-3 bg-white/70 dark:bg-slate-900/30">
+    <div class="rounded-lg border weak-divider p-4 space-y-3 bg-background/70 dark:bg-muted/30">
       <div class="space-y-6">
         <!-- 自动生成模板ID（独立区域） -->
         <div class="space-y-3">
-          <div class="text-sm font-medium text-gray-700">生成模板ID</div>
+          <div class="text-sm font-medium text-foreground">生成模板ID</div>
           <div class="flex items-center gap-2">
             <Input
               v-model="tokenTool.generatedTemplateId"
@@ -75,7 +75,7 @@ export default {
 
         <!-- 模板ID -> token -->
         <div class="space-y-3">
-          <div class="text-sm font-medium text-gray-700">模板ID → token</div>
+          <div class="text-sm font-medium text-foreground">模板ID → token</div>
           <div class="space-y-2">
             <div class="flex items-center gap-2">
               <Input
@@ -98,7 +98,7 @@ export default {
 
         <!-- token -> 模板ID -->
         <div class="space-y-3">
-          <div class="text-sm font-medium text-gray-700">token → 模板ID</div>
+          <div class="text-sm font-medium text-foreground">token → 模板ID</div>
           <div class="space-y-2">
             <div class="flex items-center gap-2">
               <Input

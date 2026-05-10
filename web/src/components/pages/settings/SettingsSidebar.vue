@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { KeyIcon, TrashIcon, SettingsIcon, InfoIcon, HistoryIcon, KeyRoundIcon, Check } from 'lucide-vue-next'
+import {
+  KeyOutlined,
+  DeleteOutlined,
+  SettingOutlined,
+  InfoCircleOutlined,
+  HistoryOutlined,
+  SafetyCertificateOutlined,
+  CheckOutlined
+} from '@ant-design/icons-vue'
 
 interface Props {
   activeTab: string
@@ -13,12 +21,12 @@ const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 const settingsMenu = [
-  { id: 'password', name: '重置密码', icon: KeyIcon, description: '更改您的登录密码' },
-  { id: 'clean', name: '数据清理', icon: TrashIcon, description: '清理历史数据与日志' },
-  { id: 'loginlogs', name: '登录日志', icon: HistoryIcon, description: '查看最近登录记录' },
-  { id: 'site', name: '站点设置', icon: SettingsIcon, description: '配置站点标题与基础信息' },
-  { id: 'tokenTool', name: '加解密工具', icon: KeyRoundIcon, description: '管理 Token 编解码工具' },
-  { id: 'about', name: '站点关于', icon: InfoIcon, description: '查看版本信息与说明' }
+  { id: 'password', name: '重置密码', icon: KeyOutlined, description: '更改您的登录密码' },
+  { id: 'clean', name: '数据清理', icon: DeleteOutlined, description: '清理历史数据与日志' },
+  { id: 'loginlogs', name: '登录日志', icon: HistoryOutlined, description: '查看最近登录记录' },
+  { id: 'site', name: '站点设置', icon: SettingOutlined, description: '配置站点标题与基础信息' },
+  { id: 'tokenTool', name: '加解密工具', icon: SafetyCertificateOutlined, description: '管理 Token 编解码工具' },
+  { id: 'about', name: '站点关于', icon: InfoCircleOutlined, description: '查看版本信息与说明' }
 ]
 
 const handleClick = (id: string) => {
@@ -54,10 +62,10 @@ export default {
 <template>
   <div class="w-full h-full">
     <div class="mb-4">
-      <h2 class="text-[16px] font-semibold text-[#1f2937] dark:text-slate-100">
+      <h2 class="text-[16px] font-semibold text-foreground">
         设置
       </h2>
-      <p class="mt-1 text-[12px] text-[#6b7280] dark:text-slate-400">
+      <p class="mt-1 text-[12px] text-muted-foreground">
         管理系统配置和偏好
       </p>
     </div>
@@ -73,10 +81,10 @@ export default {
         type="button"
         @click="handleClick(item.id)"
         :class="[
-          'w-full flex items-center justify-between px-3 py-2 h-10 rounded-md text-sm transition-colors relative',
+          'w-full flex items-center justify-between px-3 py-2 h-10 rounded-md text-sm transition-colors duration-[var(--motion-fast)] relative',
           props.activeTab === item.id
-            ? 'bg-[#3b82f6] text-white'
-            : 'text-gray-700 dark:text-slate-200 hover:bg-[#f1f5f9] dark:hover:bg-slate-800'
+            ? 'bg-brand text-white'
+            : 'text-foreground/80 hover:bg-muted'
         ]"
       >
         <div class="flex items-center gap-2">
@@ -87,7 +95,7 @@ export default {
           v-if="props.activeTab === item.id"
           class="flex items-center justify-center"
         >
-          <Check class="w-3.5 h-3.5 text-white" />
+          <CheckOutlined class="text-[14px] text-white" />
         </div>
       </button>
     </nav>

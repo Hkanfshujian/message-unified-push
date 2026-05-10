@@ -559,7 +559,7 @@ const handleSubmit = async () => {
 <template>
   <form @submit.prevent="handleSubmit" class="h-full flex flex-col min-h-0">
     <div class="min-h-0 flex-1 grid grid-cols-1 md:grid-cols-[180px_minmax(0,1fr)]">
-      <aside class="hidden md:block border-r bg-muted/20 p-3 overflow-y-auto">
+      <aside class="hidden md:block border-r weak-divider bg-muted/20 p-3 overflow-y-auto">
         <div class="space-y-1">
           <button
             v-for="item in sectionItems"
@@ -693,7 +693,7 @@ const handleSubmit = async () => {
         </div>
         <Button type="button" size="sm" variant="outline" class="h-8 px-3" @click="addExtractRule">新增字段组</Button>
       </div>
-      <div class="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border/70 bg-muted/40 p-2">
+      <div class="flex flex-wrap items-center gap-2 rounded-lg border border-dashed weak-divider bg-muted/40 p-2">
         <span class="text-xs text-muted-foreground">快速模板:</span>
         <Button type="button" size="sm" variant="ghost" class="h-7 px-2 text-xs" @click="addExtractRuleTemplate('to_user', 'dsl:pick($.to_user)')">
           to_user
@@ -708,7 +708,7 @@ const handleSubmit = async () => {
       <div
         v-for="(rule, idx) in formData.extract_rules"
         :key="`extract-rule-${idx}`"
-        class="rounded-lg border border-border/70 bg-background p-3 space-y-3 shadow-sm transition-all hover:shadow-md"
+        class="rounded-lg border weak-divider bg-background p-3 space-y-3 shadow-sm transition-all hover:shadow-md"
       >
         <div class="flex items-center justify-between">
           <Badge variant="outline" class="font-normal bg-muted/40">字段组 {{ idx + 1 }}</Badge>
@@ -781,7 +781,7 @@ const handleSubmit = async () => {
         </section>
 
         <!-- 正则测试区域 -->
-        <section v-show="activeSection === 'test'" id="sub-section-test" class="border rounded-lg p-4 bg-muted/30">
+        <section v-show="activeSection === 'test'" id="sub-section-test" class="border weak-divider rounded-lg p-4 bg-muted/30">
       <h4 class="text-sm font-medium mb-3">正则测试</h4>
       <div class="space-y-3">
       <div class="flex items-center justify-between mb-3">
@@ -943,7 +943,7 @@ const handleSubmit = async () => {
       </DialogContent>
     </Dialog>
 
-    <div class="shrink-0 border-t px-4 py-3 bg-background flex justify-end gap-2">
+    <div class="shrink-0 border-t weak-divider px-4 py-3 bg-background flex justify-end gap-2">
       <Button type="submit" :disabled="isSubmitting">
         {{ isSubmitting ? '提交中...' : (isEdit ? '保存' : '创建') }}
       </Button>

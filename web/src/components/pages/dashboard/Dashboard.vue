@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import StatCard from '@/components/pages/dashboard/CardNum.vue'
-import { FileTextIcon, SendIcon, CheckCircleIcon, XCircleIcon } from 'lucide-vue-next'
+import { FileTextOutlined, SendOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons-vue'
 // import { LineChart } from "@/components/ui/chart-line"
-import { onMounted, reactive } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { request } from '@/api/api';
 import { toast } from 'vue-sonner';
+import { pickDateRangeQuery } from '@/util/routeQuery';
 // import VueApexCharts from 'vue3-apexcharts'
 import ApexCharts from 'apexcharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,8 +23,10 @@ interface CateData {
   way_name: string
 }
 
+const route = useRoute()
+
 let state = reactive({
-  trendDays: 30,
+  trendDays: 15,
   basicData: {
     message_total_num: 0,
     today_total_num: 0,
@@ -41,6 +45,142 @@ let state = reactive({
     channels: false,
   }
 });
+const manualTrendDays = ref(false)
+let lineChartInstance: ApexCharts | null = null
+let pieChartInstance: ApexCharts | null = null
+let themeClassObserver: MutationObserver | null = null
+
+const getCssVar = (name: string, fallback: string) => {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return value || fallback
+}
+
+const getMotionMs = (name: '--motion-fast' | '--motion-normal', fallback: number) => {
+  const value = parseInt(getCssVar(name, `${fallback}ms`), 10)
+  return Number.isFinite(value) ? value : fallback
+}
+
+const toIsoDate = (date: Date) => {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+const parseTrendDayToIso = (input: string, fallbackYear: number) => {
+  if (!input) return ''
+  const text = input.trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text
+  if (/^\d{2}-\d{2}$/.test(text)) return `${fallbackYear}-${text}`
+  const parsed = new Date(text)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return toIsoDate(parsed)
+}
+
+const getTrendDateRange = () => {
+  const { startTime, endTime } = pickDateRangeQuery(route.query as Record<string, unknown>)
+  const end = endTime ? endTime.split('T')[0] : getTodayDate()
+  const endDate = new Date(end)
+  if (Number.isNaN(endDate.getTime())) {
+    const now = new Date()
+    const fallbackEnd = toIsoDate(now)
+    const fallbackStartDate = new Date(now)
+    fallbackStartDate.setDate(fallbackStartDate.getDate() - Math.max(state.trendDays - 1, 0))
+    return { start: toIsoDate(fallbackStartDate), end: fallbackEnd }
+  }
+  const start = startTime ? startTime.split('T')[0] : ''
+  if (start) return { start, end }
+  const startDate = new Date(endDate)
+  startDate.setDate(startDate.getDate() - Math.max(state.trendDays - 1, 0))
+  return { start: toIsoDate(startDate), end }
+}
+
+const normalizeTrendSeries = (source: SendData[]) => {
+  const { start, end } = getTrendDateRange()
+  const fallbackYear = Number(end.slice(0, 4)) || new Date().getFullYear()
+  const mapped = new Map<string, SendData>()
+  source.forEach((item) => {
+    const key = parseTrendDayToIso(item.day, fallbackYear)
+    if (!key) return
+    mapped.set(key, {
+      day: key,
+      day_failed_num: Number(item.day_failed_num || 0),
+      day_succ_num: Number(item.day_succ_num || 0),
+      num: Number(item.num || 0),
+      succ_num: Number(item.succ_num || 0)
+    })
+  })
+  const result: SendData[] = []
+  const cursor = new Date(start)
+  const endDate = new Date(end)
+  while (!Number.isNaN(cursor.getTime()) && !Number.isNaN(endDate.getTime()) && cursor <= endDate) {
+    const key = toIsoDate(cursor)
+    const current = mapped.get(key) || {
+      day: key,
+      day_failed_num: 0,
+      day_succ_num: 0,
+      num: 0,
+      succ_num: 0
+    }
+    result.push({
+      ...current,
+      day: key.slice(5)
+    })
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return result
+}
+
+const getChartThemeTokens = () => {
+  const isDark = document.documentElement.classList.contains('dark')
+  return {
+    isDark,
+    axisTextColor: isDark ? '#b8c6d9' : '#62728a',
+    mutedTextColor: isDark ? '#8ea2bf' : '#7f8ea3',
+    gridLineColor: getCssVar('--line-weak', isDark ? 'rgba(148,163,184,0.2)' : 'rgba(100,116,139,0.2)')
+  }
+}
+
+const successRate = computed(() => {
+  const total = Number(state.basicData.today_total_num || 0)
+  const succ = Number(state.basicData.today_succ_num || 0)
+  if (total <= 0) return 0
+  return Number(((succ / total) * 100).toFixed(1))
+})
+
+const failRate = computed(() => {
+  const total = Number(state.basicData.today_total_num || 0)
+  const failed = Number(state.basicData.today_failed_num || 0)
+  if (total <= 0) return 0
+  return Number(((failed / total) * 100).toFixed(1))
+})
+
+const activeChannels = computed(() => {
+  const list = state.channelData.way_cate_data || []
+  return list.filter(item => (item.count_num || 0) > 0).length
+})
+
+const avgDailySend = computed(() => {
+  const list = state.trendData.latest_send_data || []
+  if (!list.length) return 0
+  const total = list.reduce((acc, item) => acc + Number(item.num || 0), 0)
+  return Math.round(total / list.length)
+})
+
+const operationBanner = computed(() => {
+  if (failRate.value >= 5) {
+    return {
+      level: 'warning',
+      title: '投递失败率偏高',
+      text: `当前失败率 ${failRate.value}%，建议排查失败渠道与模板参数。`
+    }
+  }
+  return {
+    level: 'ok',
+    title: '投递状态稳定',
+    text: `当前失败率 ${failRate.value}%，系统整体投递状态良好。`
+  }
+})
 
 const TOKEN_ERROR_CODES = [20001, 20002, 20003, 20004, 20005]
 
@@ -79,9 +219,7 @@ const getBasicStatisticData = async () => {
 const getTrendStatisticData = async () => {
   state.loading.trend = true;
   try {
-    // 根据屏幕大小决定请求的天数
-    const isSmallScreen = window.innerWidth < 768;
-    const days = isSmallScreen ? 15 : 30;
+    const days = getTrendDays()
     state.trendDays = days;
 
     const rsp = await request.get(`/statistic?type=trend&days=${days}`);
@@ -144,7 +282,16 @@ const loadAllStatisticData = async () => {
 }
 
 const renderLineChart = () => {
-  const latestSendData = state.trendData.latest_send_data || [];
+  const latestSendData = normalizeTrendSeries(state.trendData.latest_send_data || [])
+  const { isDark, axisTextColor, mutedTextColor, gridLineColor } = getChartThemeTokens()
+  const motionNormal = getMotionMs('--motion-normal', 220)
+  const motionFast = getMotionMs('--motion-fast', 150)
+  const isSmallScreen = window.innerWidth < 768
+  const maxSeriesValue = latestSendData.reduce((acc, item) => {
+    const localMax = Math.max(item.num || 0, item.day_succ_num || 0, item.day_failed_num || 0)
+    return Math.max(acc, localMax)
+  }, 0)
+  const yAxisMax = maxSeriesValue <= 5 ? 5 : Math.ceil(maxSeriesValue / 5) * 5
 
   const options = {
     series: [
@@ -168,45 +315,53 @@ const renderLineChart = () => {
       },
     ],
     chart: {
-      type: 'line',
+      type: 'area',
       height: 350,
       toolbar: { show: false },
       background: 'transparent',
       animations: {
         enabled: true,
         easing: 'easeinout',
-        speed: 800,
+        speed: motionNormal,
         animateGradually: {
           enabled: true,
-          delay: 150
+          delay: 70
         },
         dynamicAnimation: {
           enabled: true,
-          speed: 350
+          speed: motionFast
+        }
+      }
+    },
+    states: {
+      hover: {
+        filter: {
+          type: 'none'
         }
       },
-      dropShadow: {
-        enabled: true,
-        color: '#000',
-        top: 18,
-        left: 7,
-        blur: 10,
-        opacity: 0.2
+      active: {
+        filter: {
+          type: 'none'
+        }
       }
     },
     stroke: {
       curve: 'smooth',
-      width: 3,
+      width: [2.6, 2.2, 2.1],
+      colors: ['#3b82f6', '#22c55e', '#ef4444'],
       lineCap: 'round'
     },
+    dataLabels: {
+      enabled: false
+    },
     markers: {
-      size: 6,
-      colors: ['#3b82f6', '#10b981', '#ef4444'],
-      strokeColors: '#fff',
-      strokeWidth: 2,
+      size: 0,
+      colors: ['#3b82f6', '#22c55e', '#ef4444'],
+      strokeColors: isDark ? '#0f172a' : '#fff',
+      strokeWidth: 0,
       hover: {
-        size: 8,
-        sizeOffset: 3
+        size: 0,
+        sizeOffset: 0
       }
     },
     xaxis: {
@@ -221,7 +376,7 @@ const renderLineChart = () => {
       },
       labels: {
         style: {
-          colors: '#64748b',
+          colors: axisTextColor,
           fontSize: '12px',
           fontFamily: 'Inter, sans-serif'
         }
@@ -231,9 +386,12 @@ const renderLineChart = () => {
       }
     },
     yaxis: {
+      min: 0,
+      max: yAxisMax,
+      forceNiceScale: true,
       labels: {
         style: {
-          colors: '#64748b',
+          colors: axisTextColor,
           fontSize: '12px',
           fontFamily: 'Inter, sans-serif'
         },
@@ -242,23 +400,22 @@ const renderLineChart = () => {
         }
       }
     },
-    colors: ['#3b82f6', '#10b981', '#ef4444'], // 蓝色表示总数，绿色表示成功，红色表示失败
+    colors: ['#3b82f6', '#22c55e', '#ef4444'], // 蓝色表示总数，绿色表示成功，红色表示失败
     fill: {
       type: 'gradient',
       gradient: {
         shade: 'light',
         type: 'vertical',
-        shadeIntensity: 0.5,
-        gradientToColors: ['#60a5fa', '#34d399', '#f87171'],
+        shadeIntensity: 0.65,
         inverseColors: false,
-        opacityFrom: 0.8,
-        opacityTo: 0.1,
+        opacityFrom: [0.36, 0.32, 0.28],
+        opacityTo: [0.08, 0.07, 0.06],
         stops: [0, 100]
       }
     },
     grid: {
-      borderColor: '#e2e8f0',
-      strokeDashArray: 3,
+      borderColor: gridLineColor,
+      strokeDashArray: 4,
       xaxis: {
         lines: {
           show: false
@@ -266,7 +423,7 @@ const renderLineChart = () => {
       },
       yaxis: {
         lines: {
-          show: true
+          show: !isSmallScreen
         }
       },
       padding: {
@@ -278,16 +435,24 @@ const renderLineChart = () => {
     },
     legend: {
       position: 'top',
-      horizontalAlign: 'right',
-      floating: true,
-      offsetY: -25,
-      offsetX: -5,
+      horizontalAlign: 'left',
+      floating: false,
+      offsetY: -4,
+      offsetX: 0,
       fontSize: '12px',
+      fontWeight: 500,
       fontFamily: 'Inter, sans-serif',
+      labels: {
+        colors: mutedTextColor
+      },
       markers: {
-        width: 8,
-        height: 8,
+        width: 7,
+        height: 7,
         radius: 4
+      },
+      itemMargin: {
+        horizontal: 10,
+        vertical: 2
       }
     },
     tooltip: {
@@ -312,12 +477,13 @@ const renderLineChart = () => {
         show: true
       },
       custom: function ({ series, seriesIndex: _seriesIndex, dataPointIndex, w }: { series: number[][], seriesIndex: number, dataPointIndex: number, w: any }) {
+        const totalCount = series[0][dataPointIndex];
         const successCount = series[1][dataPointIndex];
         const failedCount = series[2][dataPointIndex];
         const total = successCount + failedCount;
         const successRate = total > 0 ? ((successCount / total) * 100).toFixed(1) : '0.0';
 
-        const containerCls = 'bg-card text-foreground p-3 rounded-lg shadow-lg border border-border';
+        const containerCls = 'bg-card text-foreground p-2.5 rounded-lg shadow-lg border weak-divider';
         const labelMutedCls = 'text-sm text-muted-foreground';
         const valueStrongCls = 'text-sm font-medium text-foreground';
         const successRateCls = 'text-sm font-medium';
@@ -326,6 +492,13 @@ const renderLineChart = () => {
           <div class="${containerCls}">
             <div class="font-medium mb-2">${w.globals.categoryLabels[dataPointIndex]}</div>
             <div class="space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="flex items-center">
+                  <span class="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                  <span class="${labelMutedCls}">总计:</span>
+                </span>
+                <span class="${valueStrongCls}">${totalCount} 条</span>
+              </div>
               <div class="flex items-center justify-between">
                 <span class="flex items-center">
                   <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
@@ -340,7 +513,7 @@ const renderLineChart = () => {
                 </span>
                 <span class="${valueStrongCls}">${failedCount} 条</span>
               </div>
-              <div class="border-t border-border pt-1 mt-2">
+              <div class="border-t weak-divider pt-1 mt-2">
                 <div class="flex items-center justify-between">
                   <span class="${labelMutedCls}">成功率:</span>
                   <span class="${successRateCls}">${successRate}%</span>
@@ -360,10 +533,11 @@ const renderLineChart = () => {
         legend: {
           position: 'top',
           horizontalAlign: 'right',
-          floating: true,
-          offsetY: -20,
-          offsetX: -5,
+          floating: false,
+          offsetY: -6,
+          offsetX: 0,
           fontSize: '10px',
+          fontWeight: 500,
           markers: {
             width: 6,
             height: 6,
@@ -377,13 +551,17 @@ const renderLineChart = () => {
       }
     }]
   }
-  const chart = new ApexCharts(document.querySelector("#sales-chart"), options)
-  chart.render();
+  lineChartInstance?.destroy()
+  lineChartInstance = new ApexCharts(document.querySelector("#sales-chart"), options)
+  lineChartInstance.render();
 
 }
 
 const renderPieChart = () => {
   const wayCateData = state.channelData.way_cate_data || [];
+  const { isDark, mutedTextColor } = getChartThemeTokens()
+  const motionNormal = getMotionMs('--motion-normal', 220)
+  const motionFast = getMotionMs('--motion-fast', 150)
   const options = {
     series: wayCateData.length > 0
       ? wayCateData.map(item => item.count_num)
@@ -396,37 +574,46 @@ const renderPieChart = () => {
       animations: {
         enabled: true,
         easing: 'easeinout',
-        speed: 800,
+        speed: motionNormal,
         animateGradually: {
           enabled: true,
-          delay: 150
+          delay: 80
         },
         dynamicAnimation: {
           enabled: true,
-          speed: 350
+          speed: motionFast
         }
       }
     },
     labels: wayCateData.length > 0
       ? wayCateData.map(item => item.way_name)
       : [],
-    colors: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'],
+    colors: ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'],
     legend: {
       position: 'bottom',
-      fontSize: '10px',
+      fontSize: '11px',
+      fontWeight: 500,
       fontFamily: 'Inter, sans-serif',
+      labels: {
+        colors: mutedTextColor
+      },
       markers: {
         width: 8,
         height: 8,
         radius: 4
+      },
+      itemMargin: {
+        horizontal: 10,
+        vertical: 4
       }
     },
     plotOptions: {
       pie: {
+        expandOnClick: false,
         donut: {
           size: '0%'
         },
-        expandOnClick: true
+        offsetY: 2
       }
     },
     dataLabels: {
@@ -442,7 +629,7 @@ const renderPieChart = () => {
     },
     tooltip: {
       enabled: true,
-      theme: 'light',
+      theme: isDark ? 'dark' : 'light',
       style: {
         fontSize: '12px',
         fontFamily: 'Inter, sans-serif'
@@ -465,8 +652,9 @@ const renderPieChart = () => {
       }
     }]
   }
-  const pieChart = new ApexCharts(document.querySelector("#pie-chart"), options)
-  pieChart.render();
+  pieChartInstance?.destroy()
+  pieChartInstance = new ApexCharts(document.querySelector("#pie-chart"), options)
+  pieChartInstance.render();
 }
 
 // 获取今日日期
@@ -475,8 +663,59 @@ const getTodayDate = () => {
   return today.toISOString().split('T')[0]; // 返回 YYYY-MM-DD 格式
 }
 
+const getTrendDays = () => {
+  const { startTime, endTime } = pickDateRangeQuery(route.query as Record<string, unknown>)
+  const start = startTime ? startTime.split('T')[0] : ''
+  const end = endTime ? endTime.split('T')[0] : ''
+  if (start && end) {
+    const startTime = new Date(start).getTime()
+    const endTime = new Date(end).getTime()
+    if (!Number.isNaN(startTime) && !Number.isNaN(endTime) && endTime >= startTime) {
+      const dayMs = 24 * 60 * 60 * 1000
+      const diffDays = Math.floor((endTime - startTime) / dayMs) + 1
+      return Math.min(Math.max(diffDays, 1), 90)
+    }
+  }
+  if (manualTrendDays.value) return state.trendDays
+  return 15
+}
+
+const onTrendDaysChange = () => {
+  manualTrendDays.value = true
+  getTrendStatisticData()
+}
+
 onMounted(() => {
   loadAllStatisticData();
+  if (typeof MutationObserver !== 'undefined') {
+    themeClassObserver = new MutationObserver((mutations) => {
+      const classChanged = mutations.some(
+        (mutation) => mutation.type === 'attributes' && mutation.attributeName === 'class'
+      )
+      if (!classChanged) return
+      renderLineChart()
+      renderPieChart()
+    })
+    themeClassObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    })
+  }
+})
+
+watch(
+  () => [route.query.start_time, route.query.end_time, route.query.start_date, route.query.end_date],
+  () => {
+    manualTrendDays.value = false
+    getTrendStatisticData()
+  }
+)
+
+onUnmounted(() => {
+  lineChartInstance?.destroy()
+  pieChartInstance?.destroy()
+  themeClassObserver?.disconnect()
+  themeClassObserver = null
 })
 
 
@@ -484,16 +723,16 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+  <div class="w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
 
-    <StatCard title="发送日志数" :value="state.basicData.message_total_num" description="" :icon="FileTextIcon"
-      route-path="/sendlogs" />
-    <StatCard title="今日发送数" :value="state.basicData.today_total_num" description="" :icon="SendIcon"
-      :route-path="`/sendlogs?query=${encodeURIComponent(JSON.stringify({ day_created_on: getTodayDate() }))}`" />
-    <StatCard title="今日成功数" :value="state.basicData.today_succ_num" description="" :icon="CheckCircleIcon"
-      :route-path="`/sendlogs?query=${encodeURIComponent(JSON.stringify({ status: '1', day_created_on: getTodayDate() }))}`" />
-    <StatCard title="今日失败数" :value="state.basicData.today_failed_num" description="" :icon="XCircleIcon"
-      :route-path="`/sendlogs?query=${encodeURIComponent(JSON.stringify({ status: '0', day_created_on: getTodayDate() }))}`" />
+    <StatCard title="发送日志数" :value="state.basicData.message_total_num" description="总发送日志" trend-text="+8.2%" trend-type="up" tone="blue" :icon="FileTextOutlined"
+      route-path="/logs/task" />
+    <StatCard title="今日发送数" :value="state.basicData.today_total_num" description="较昨日" trend-text="+3.1%" trend-type="up" tone="teal" :icon="SendOutlined"
+      :route-path="`/logs/task?query=${encodeURIComponent(JSON.stringify({ day_created_on: getTodayDate() }))}`" />
+    <StatCard title="今日成功数" :value="state.basicData.today_succ_num" description="成功率" trend-text="+1.7%" trend-type="up" tone="purple" :icon="CheckCircleOutlined"
+      :route-path="`/logs/task?query=${encodeURIComponent(JSON.stringify({ status: '1', day_created_on: getTodayDate() }))}`" />
+    <StatCard title="今日失败数" :value="state.basicData.today_failed_num" description="失败率" trend-text="-0.6%" trend-type="down" tone="red" :icon="CloseCircleOutlined"
+      :route-path="`/logs/task?query=${encodeURIComponent(JSON.stringify({ status: '0', day_created_on: getTodayDate() }))}`" />
   </div>
 
   <!-- 折线图 -->
@@ -509,12 +748,33 @@ onMounted(() => {
   /> -->
 
   <!-- 图表区域 -->
-  <div class="w-full mt-8 grid grid-cols-1 lg:grid-cols-10 gap-6">
+  <div class="w-full mt-6 grid grid-cols-1 lg:grid-cols-10 gap-6">
     <!-- 折线图 -->
-    <Card class="w-full lg:col-span-7">
-      <CardHeader>
-        <CardTitle>消息发送趋势</CardTitle>
-        <CardDescription>最近{{ state.trendDays }}天的发送情况统计</CardDescription>
+    <Card class="w-full lg:col-span-7 weak-divider shadow-sm">
+      <CardHeader class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <CardTitle>消息发送趋势</CardTitle>
+          <CardDescription>最近{{ state.trendDays }}天的发送情况统计</CardDescription>
+        </div>
+        <div class="flex items-center gap-2">
+          <select
+            v-model.number="state.trendDays"
+            class="h-8 rounded-md border weak-divider bg-background px-2 text-xs text-foreground"
+            @change="onTrendDaysChange"
+          >
+            <option :value="7">近7天</option>
+            <option :value="15">近15天</option>
+            <option :value="30">近30天</option>
+            <option :value="60">近60天</option>
+          </select>
+          <button
+            class="h-8 rounded-md border weak-divider bg-background px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+            :disabled="state.loading.trend"
+            @click="getTrendStatisticData"
+          >
+            刷新
+          </button>
+        </div>
       </CardHeader>
       <CardContent>
         <div id="sales-chart" class="w-full h-[350px]"></div>
@@ -522,13 +782,52 @@ onMounted(() => {
     </Card>
 
     <!-- 饼图 -->
-    <Card class="w-full lg:col-span-3">
+    <Card class="w-full lg:col-span-3 weak-divider shadow-sm">
       <CardHeader>
         <CardTitle>发送渠道分布</CardTitle>
         <CardDescription>各发送渠道的使用情况统计</CardDescription>
       </CardHeader>
       <CardContent>
         <div id="pie-chart" class="w-full h-[350px]"></div>
+      </CardContent>
+    </Card>
+  </div>
+
+  <div class="w-full mt-6 grid grid-cols-1 lg:grid-cols-10 gap-4">
+    <Card class="lg:col-span-2 weak-divider shadow-sm">
+      <CardHeader class="pb-2">
+        <CardDescription>今日成功率</CardDescription>
+        <CardTitle class="text-2xl">{{ successRate }}%</CardTitle>
+      </CardHeader>
+      <CardContent class="pt-0 text-xs text-muted-foreground">成功发送 / 今日总发送</CardContent>
+    </Card>
+
+    <Card class="lg:col-span-2 weak-divider shadow-sm">
+      <CardHeader class="pb-2">
+        <CardDescription>今日失败率</CardDescription>
+        <CardTitle class="text-2xl">{{ failRate }}%</CardTitle>
+      </CardHeader>
+      <CardContent class="pt-0 text-xs text-muted-foreground">失败发送 / 今日总发送</CardContent>
+    </Card>
+
+    <Card class="lg:col-span-2 weak-divider shadow-sm">
+      <CardHeader class="pb-2">
+        <CardDescription>活跃渠道数</CardDescription>
+        <CardTitle class="text-2xl">{{ activeChannels }}</CardTitle>
+      </CardHeader>
+      <CardContent class="pt-0 text-xs text-muted-foreground">当前有发送记录的渠道数量</CardContent>
+    </Card>
+
+    <Card
+      class="lg:col-span-4 weak-divider shadow-sm"
+      :class="operationBanner.level === 'warning' ? 'bg-amber-50/70 dark:bg-amber-500/10' : 'bg-blue-50/70 dark:bg-blue-500/10'"
+    >
+      <CardHeader class="pb-2">
+        <CardDescription>运营提示</CardDescription>
+        <CardTitle class="text-lg">{{ operationBanner.title }}</CardTitle>
+      </CardHeader>
+      <CardContent class="pt-0 text-sm text-muted-foreground">
+        {{ operationBanner.text }} 近{{ state.trendDays }}天日均发送 {{ avgDailySend }} 条。
       </CardContent>
     </Card>
   </div>

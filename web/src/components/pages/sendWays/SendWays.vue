@@ -13,11 +13,12 @@ import AddWays from './AddWays.vue'
 import EditWays from './EditWays.vue'
 import { toast } from 'vue-sonner'
 
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { request } from '@/api/api';
 import { CONSTANT } from '@/constant';
 // @ts-ignore
 import { getPageSize } from '@/util/pageUtils';
+import { appendDateRangeQuery, pickDateRangeQuery } from '@/util/routeQuery'
 
 
 interface WayItem {
@@ -30,7 +31,8 @@ interface WayItem {
   status: number
 }
 
-const router = useRoute();
+const route = useRoute();
+const router = useRouter();
 
 let state = reactive({
   tableData: [] as WayItem[],
@@ -81,6 +83,28 @@ const handleSaveChannel = (_data: any) => {
 // 总页数
 const totalPages = computed(() => Math.ceil(state.total / state.pageSize))
 
+const parsePositiveNumber = (value: unknown, fallback: number) => {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return fallback
+  return Math.floor(n)
+}
+
+const buildRouteQuery = () => {
+  const nextQuery: Record<string, string> = {}
+  const name = state.search.trim()
+  if (name) nextQuery.name = name
+  if (selectedChannelType.value && selectedChannelType.value !== 'all') nextQuery.channel_type = selectedChannelType.value
+  if (selectedStatus.value && selectedStatus.value !== 'all') nextQuery.status = selectedStatus.value
+  nextQuery.page = String(state.currPage)
+  nextQuery.size = String(state.pageSize)
+  appendDateRangeQuery(nextQuery, route.query as Record<string, unknown>)
+  return nextQuery
+}
+
+const syncRouteQuery = async () => {
+  await router.replace({ path: route.path, query: buildRouteQuery() })
+}
+
 const getWayTypeText = (type: string) => {
   const wayData = CONSTANT.WAYS_DATA.find(item => item.type === type)
   return wayData ? wayData.label : type
@@ -122,6 +146,7 @@ const showDeleteError = computed(() => {
 const changePage = async (page: number) => {
   if (page >= 1 && page <= totalPages.value) {
     state.currPage = page
+    await syncRouteQuery()
     await queryListDataWithStatus()
   }
 }
@@ -130,12 +155,15 @@ const handlePageSizeChange = async (size: number) => {
   if (size <= 0) return
   state.pageSize = size
   state.currPage = 1
+  await syncRouteQuery()
   await queryListDataWithStatus()
 }
 
 //触发过滤筛选
 const filterFunc = async () => {
-  await queryListData(state.currPage, state.pageSize, state.search, state.optionValue);
+  state.currPage = 1
+  await syncRouteQuery()
+  await queryListDataWithStatus()
 }
 
 // 按渠道类型过滤
@@ -143,35 +171,36 @@ const filterByChannelType = async (value: any) => {
   if (value) {
     selectedChannelType.value = String(value);
     state.currPage = 1; // 重置到第一页
+    await syncRouteQuery()
     await queryListDataWithStatus();
   }
 }
 
 // 查询数据（包含状态过滤）
 const queryListDataWithStatus = async () => {
-  const statusParam = selectedStatus.value === 'all' ? '' : selectedStatus.value;
-  const channelTypeParam = selectedChannelType.value === 'all' ? '' : selectedChannelType.value;
-  await queryListData(state.currPage, state.pageSize, state.search, channelTypeParam, '', statusParam);
+  const statusParam = selectedStatus.value === 'all' ? '' : selectedStatus.value
+  const channelTypeParam = selectedChannelType.value === 'all' ? '' : selectedChannelType.value
+  await queryListData(state.currPage, state.pageSize, state.search, channelTypeParam, statusParam)
 }
 
-const queryListData = async (page: number, size: number, name = '', channelType = '', query = '', status = '') => {
-  let params: any = { page: page, size: size, name: name, type: channelType, query: query };
+const queryListData = async (page: number, size: number, name = '', channelType = '', status = '') => {
+  const params: any = { page, size, name, type: channelType }
   if (status !== '') {
-    params.status = status;
+    params.status = status
   }
-  const rsp = await request.get('/sendways/list', { params: params });
-  state.tableData = await rsp.data.data.lists;
-  state.total = await rsp.data.data.total;
+  const { startTime, endTime } = pickDateRangeQuery(route.query as Record<string, unknown>)
+  if (startTime) params.start_time = startTime
+  if (endTime) params.end_time = endTime
+  const rsp = await request.get('/sendways/list', { params })
+  state.tableData = rsp.data.data.lists || []
+  state.total = rsp.data.data.total || 0
 }
 // 删除渠道
 const handleDelete = async (id: number) => {
   const rsp = await request.post('/sendways/delete', { id: id });
   if (rsp.status == 200 && await rsp.data.code == 200) {
-    // state.tableData.splice(index, 1);
     toast.success(rsp.data.msg);
-    setTimeout(() => {
-      window.location.reload();
-    }, 1000);
+    await queryListDataWithStatus();
   }
 
 }
@@ -183,15 +212,14 @@ const handleConfirmDelete = async () => {
 }
 
 onMounted(async () => {
-  // 初始化查询
-  state.search = router.query.name?.toString() || '';
-  await queryListData(
-    1,
-    state.pageSize,
-    router.query.name?.toString() || '',
-    router.query.channel_type?.toString() || ''
-  );
-});
+  state.search = route.query.name?.toString() || ''
+  selectedChannelType.value = route.query.channel_type?.toString() || 'all'
+  selectedStatus.value = route.query.status?.toString() || 'all'
+  state.currPage = parsePositiveNumber(route.query.page, 1)
+  state.pageSize = parsePositiveNumber(route.query.size, state.pageSize)
+  await syncRouteQuery()
+  await queryListDataWithStatus()
+})
 </script>
 
 <template>
@@ -244,7 +272,7 @@ onMounted(async () => {
     </div>
 
     <!-- 表格 -->
-    <div class="rounded border border-slate-300 dark:border-slate-600 overflow-x-auto">
+    <div class="rounded border weak-divider overflow-x-auto">
       <Table class="data-table border-collapse">
       <TableHeader>
         <TableRow>
@@ -279,7 +307,7 @@ onMounted(async () => {
             <!-- <Button size="sm" variant="outline" @click="openConfigSheet(channel)">查看</Button> -->
             <Button v-permission="'message:sendways:delete'" size="sm" variant="outline" class="text-red-500 border-red-300 hover:bg-red-50 
               hover:border-red-400 hover:text-red-600 hover:shadow-md
-               transition-all duration-200" @click="openDeleteConfirm(channel)">删除</Button>
+               transition-all duration-[var(--motion-fast)]" @click="openDeleteConfirm(channel)">删除</Button>
             <!-- <Badge :class="channel.status === 1 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'">
               {{ getStatusText(channel.status) }} -->
             <!-- </Badge> -->
@@ -319,7 +347,7 @@ onMounted(async () => {
           <DialogTitle>确认删除渠道</DialogTitle>
         </DialogHeader>
         <div class="space-y-2">
-          <div class="text-sm text-gray-600">请输入要删除的渠道名称以确认操作</div>
+          <div class="text-sm text-muted-foreground">请输入要删除的渠道名称以确认操作</div>
           <Input
             v-model="deleteConfirmInput"
             :max-length="50"

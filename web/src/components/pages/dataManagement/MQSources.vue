@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
-import { onBeforeRouteLeave } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +13,7 @@ import { toast } from 'vue-sonner'
 import { request } from '@/api/api'
 // @ts-ignore
 import { getPageSize } from '@/util/pageUtils'
+import { appendDateRangeQuery, pickDateRangeQuery } from '@/util/routeQuery'
 import MQSourceForm from './MQSourceForm.vue'
 
 interface MQSourceItem {
@@ -37,6 +38,8 @@ let state = reactive({
   pageSize: getPageSize(),
   search: '',
 })
+const route = useRoute()
+const router = useRouter()
 
 // 状态过滤
 const selectedStatus = ref('all')
@@ -92,7 +95,7 @@ const setupAutoRefreshByPolicy = async () => {
       return
     }
     autoRefreshTimer = window.setInterval(() => {
-      queryListDataWithStatus()
+      queryListDataWithStatus(false)
     }, intervalSeconds * 1000)
   } catch {
     // 忽略策略获取异常，保持手动刷新
@@ -101,6 +104,29 @@ const setupAutoRefreshByPolicy = async () => {
 
 // 总页数
 const totalPages = computed(() => Math.ceil(state.total / state.pageSize))
+
+const parsePositiveNumber = (value: unknown, fallback: number) => {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return fallback
+  return Math.floor(n)
+}
+
+const buildRouteQuery = () => {
+  const nextQuery: Record<string, string> = {
+    page: String(state.currPage),
+    page_size: String(state.pageSize),
+  }
+  const name = state.search.trim()
+  if (name) nextQuery.name = name
+  if (selectedType.value && selectedType.value !== 'all') nextQuery.type = selectedType.value
+  if (selectedStatus.value && selectedStatus.value !== 'all') nextQuery.status = selectedStatus.value
+  appendDateRangeQuery(nextQuery, route.query as Record<string, unknown>)
+  return nextQuery
+}
+
+const syncRouteQuery = async () => {
+  await router.replace({ path: route.path, query: buildRouteQuery() })
+}
 
 // 获取队列类型文本
 const getTypeText = (type: string) => {
@@ -121,7 +147,7 @@ const getStatusText = (status: string) => {
 const getStatusClass = (status: string) => {
   return status === 'success'
     ? 'bg-green-100 text-green-800 border-green-200'
-    : 'bg-gray-100 text-gray-700 border-gray-200'
+    : 'bg-muted text-muted-foreground border-[var(--line-weak)]'
 }
 
 // 打开编辑对话框
@@ -173,6 +199,9 @@ const queryListData = async (page: number, pageSize: number, name: string, type:
     } else if (status && status !== 'all') {
       params.status = status
     }
+    const { startTime, endTime } = pickDateRangeQuery(route.query as Record<string, unknown>)
+    if (startTime) params.start_time = startTime
+    if (endTime) params.end_time = endTime
 
     const res = await request.get('/mq-sources/list', { params })
     if (res.data.code === 200) {
@@ -190,9 +219,11 @@ const queryListData = async (page: number, pageSize: number, name: string, type:
   }
 }
 
-const queryListDataWithStatus = async () => {
-  const normalizedStatus = selectedStatus.value === STATUS_UNTESTED ? 'failed' : selectedStatus.value
-  await queryListData(state.currPage, state.pageSize, state.search, selectedType.value, normalizedStatus)
+const queryListDataWithStatus = async (shouldSyncRoute = true) => {
+  if (shouldSyncRoute) {
+    await syncRouteQuery()
+  }
+  await queryListData(state.currPage, state.pageSize, state.search, selectedType.value, selectedStatus.value)
 }
 
 // 分页
@@ -278,7 +309,18 @@ const handleSaveSuccess = () => {
 }
 
 onMounted(() => {
-  queryListDataWithStatus()
+  state.search = route.query.name?.toString() || ''
+  selectedType.value = route.query.type?.toString() || 'all'
+  selectedStatus.value = route.query.status?.toString() || 'all'
+  if (!typeOptions.some((item) => item.value === selectedType.value)) {
+    selectedType.value = 'all'
+  }
+  if (!['all', 'success', 'failed', STATUS_UNTESTED].includes(selectedStatus.value)) {
+    selectedStatus.value = 'all'
+  }
+  state.currPage = parsePositiveNumber(route.query.page, 1)
+  state.pageSize = parsePositiveNumber(route.query.page_size, state.pageSize)
+  queryListDataWithStatus(false)
   setupAutoRefreshByPolicy()
 })
 
@@ -324,7 +366,7 @@ onUnmounted(() => {
               <SelectItem value="all">全部状态</SelectItem>
               <SelectItem value="success">在线</SelectItem>
               <SelectItem value="failed">离线</SelectItem>
-              <SelectItem :value="STATUS_UNTESTED">离线</SelectItem>
+              <SelectItem :value="STATUS_UNTESTED">未测试</SelectItem>
             </SelectGroup>
           </SelectContent>
         </Select>
@@ -333,7 +375,7 @@ onUnmounted(() => {
       <Button class="primary-btn" v-permission="'data:mq-source:add'" @click="isAddDialogOpen = true">新增数据源</Button>
     </div>
 
-    <div class="rounded border border-slate-300 dark:border-slate-600 overflow-x-auto">
+    <div class="rounded border weak-divider overflow-x-auto">
       <Table class="data-table border-collapse">
         <TableHeader>
           <TableRow>

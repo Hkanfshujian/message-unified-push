@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { CircleHelp } from 'lucide-vue-next'
+import { QuestionCircleOutlined } from '@ant-design/icons-vue'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -131,7 +131,7 @@ onMounted(async () => {
 <template>
   <div class="space-y-5">
     <!-- 基础开关 -->
-    <div class="rounded-lg border border-slate-300/80 dark:border-slate-700 p-4 space-y-3 bg-white/70 dark:bg-slate-900/30">
+    <div class="rounded-lg border weak-divider p-4 space-y-3 bg-background/70 dark:bg-muted/30">
       <div class="text-sm font-semibold">基础开关</div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="flex items-center justify-between">
@@ -154,16 +154,16 @@ onMounted(async () => {
     </div>
 
     <!-- Casdoor 配置 -->
-    <div v-if="casdoorEnabledBool" class="rounded-lg border border-slate-300/80 dark:border-slate-700 p-4 space-y-3 bg-white/70 dark:bg-slate-900/30">
+    <div v-if="casdoorEnabledBool" class="rounded-lg border weak-divider p-4 space-y-3 bg-background/70 dark:bg-muted/30">
       <div class="text-sm font-semibold">Casdoor 配置</div>
       <TooltipProvider>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="space-y-2">
             <div class="flex items-center gap-1.5">
-              <span class="text-sm text-slate-700 dark:text-slate-200">服务地址</span>
+              <span class="text-sm text-foreground">服务地址</span>
               <Tooltip>
                 <TooltipTrigger>
-                  <CircleHelp class="w-4 h-4 text-slate-400 cursor-help" />
+                  <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>Casdoor 服务地址，如：https://sso.example.com</p>
@@ -174,10 +174,10 @@ onMounted(async () => {
           </div>
           <div class="space-y-2">
             <div class="flex items-center gap-1.5">
-              <span class="text-sm text-slate-700 dark:text-slate-200">回调地址</span>
+              <span class="text-sm text-foreground">回调地址</span>
               <Tooltip>
                 <TooltipTrigger>
-                  <CircleHelp class="w-4 h-4 text-slate-400 cursor-help" />
+                  <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>登录成功后的回调地址，如：https://your-domain.com/auth/casdoor/callback</p>
@@ -190,10 +190,10 @@ onMounted(async () => {
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="space-y-2">
             <div class="flex items-center gap-1.5">
-              <span class="text-sm text-slate-700 dark:text-slate-200">客户端ID</span>
+              <span class="text-sm text-foreground">客户端ID</span>
               <Tooltip>
                 <TooltipTrigger>
-                  <CircleHelp class="w-4 h-4 text-slate-400 cursor-help" />
+                  <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>在 Casdoor 注册的应用客户端 ID</p>
@@ -204,10 +204,10 @@ onMounted(async () => {
           </div>
           <div class="space-y-2">
             <div class="flex items-center gap-1.5">
-              <span class="text-sm text-slate-700 dark:text-slate-200">客户端密钥</span>
+              <span class="text-sm text-foreground">客户端密钥</span>
               <Tooltip>
                 <TooltipTrigger>
-                  <CircleHelp class="w-4 h-4 text-slate-400 cursor-help" />
+                  <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>在 Casdoor 注册的应用客户端密钥</p>
@@ -219,16 +219,16 @@ onMounted(async () => {
         </div>
 
         <!-- OAuth2 端点配置 -->
-        <div class="pt-4 mt-2 border-t border-slate-200 dark:border-slate-700">
-          <div class="text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">OAuth2 端点配置</div>
-          <div class="text-xs text-slate-500 dark:text-slate-400 mb-3">Casdoor 默认端点已预设，一般无需修改</div>
+        <div class="pt-4 mt-2 border-t weak-divider">
+          <div class="text-sm font-medium text-foreground mb-2">OAuth2 端点配置</div>
+          <div class="text-xs text-muted-foreground mb-3">Casdoor 默认端点已预设，一般无需修改</div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="space-y-2">
               <div class="flex items-center gap-1.5">
-                <span class="text-sm text-slate-700 dark:text-slate-200">授权路径</span>
+                <span class="text-sm text-foreground">授权路径</span>
                 <Tooltip>
                   <TooltipTrigger>
-                    <CircleHelp class="w-4 h-4 text-slate-400 cursor-help" />
+                    <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>OAuth2 授权端点路径，默认：/login/oauth/authorize</p>
@@ -239,10 +239,10 @@ onMounted(async () => {
             </div>
             <div class="space-y-2">
               <div class="flex items-center gap-1.5">
-                <span class="text-sm text-slate-700 dark:text-slate-200">令牌路径</span>
+                <span class="text-sm text-foreground">令牌路径</span>
                 <Tooltip>
                   <TooltipTrigger>
-                    <CircleHelp class="w-4 h-4 text-slate-400 cursor-help" />
+                    <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>OAuth2 令牌端点路径，默认：/api/login/oauth/access_token</p>
@@ -253,10 +253,10 @@ onMounted(async () => {
             </div>
             <div class="space-y-2">
               <div class="flex items-center gap-1.5">
-                <span class="text-sm text-slate-700 dark:text-slate-200">用户信息路径</span>
+                <span class="text-sm text-foreground">用户信息路径</span>
                 <Tooltip>
                   <TooltipTrigger>
-                    <CircleHelp class="w-4 h-4 text-slate-400 cursor-help" />
+                    <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>用户信息端点路径，默认：/api/get-account</p>
@@ -267,10 +267,10 @@ onMounted(async () => {
             </div>
             <div class="space-y-2">
               <div class="flex items-center gap-1.5">
-                <span class="text-sm text-slate-700 dark:text-slate-200">登出路径</span>
+                <span class="text-sm text-foreground">登出路径</span>
                 <Tooltip>
                   <TooltipTrigger>
-                    <CircleHelp class="w-4 h-4 text-slate-400 cursor-help" />
+                    <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>统一登出端点路径，默认：/api/logout</p>
@@ -285,11 +285,11 @@ onMounted(async () => {
     </div>
 
     <!-- 登录策略 -->
-    <div class="rounded-lg border border-slate-300/80 dark:border-slate-700 p-4 space-y-3 bg-white/70 dark:bg-slate-900/30">
+    <div class="rounded-lg border weak-divider p-4 space-y-3 bg-background/70 dark:bg-muted/30">
       <div class="text-sm font-semibold">登录策略</div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="space-y-2">
-          <div class="text-sm text-slate-700 dark:text-slate-200">本地新用户默认组</div>
+          <div class="text-sm text-foreground">本地新用户默认组</div>
           <select
             v-model="state.local_default_group_code"
             class="w-full h-9 px-3 rounded-md border border-input bg-background text-sm"
@@ -301,7 +301,7 @@ onMounted(async () => {
           </select>
         </div>
         <div v-if="casdoorEnabledBool" class="space-y-2">
-          <div class="text-sm text-slate-700 dark:text-slate-200">Casdoor 新用户默认组</div>
+          <div class="text-sm text-foreground">Casdoor 新用户默认组</div>
           <select
             v-model="state.casdoor_default_group_code"
             class="w-full h-9 px-3 rounded-md border border-input bg-background text-sm"
@@ -321,18 +321,18 @@ onMounted(async () => {
           </span>
         </div>
         <div class="space-y-2">
-          <div class="text-sm text-slate-700 dark:text-slate-200">登录按钮文案</div>
+          <div class="text-sm text-foreground">登录按钮文案</div>
           <Input v-model="state.casdoor_button_text" placeholder="企微登录" maxlength="50" />
         </div>
       </div>
       <div v-if="casdoorEnabledBool" class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="space-y-2">
-          <div class="text-sm text-slate-700 dark:text-slate-200 flex items-center gap-1">
+          <div class="text-sm text-foreground flex items-center gap-1">
             登录按钮图标
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger as-child>
-                  <CircleHelp class="w-4 h-4 text-muted-foreground cursor-help" />
+                  <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>填写图标 URL，如企微、钉钉等 Logo 地址</p>
@@ -349,7 +349,7 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div class="flex justify-end pt-2 border-t border-slate-200/80 dark:border-slate-700/80">
+    <div class="flex justify-end pt-2 border-t weak-divider">
       <Button :disabled="loading || saving" @click="saveConfig">{{ saving ? '保存中...' : '保存设置' }}</Button>
     </div>
   </div>

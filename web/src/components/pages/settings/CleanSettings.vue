@@ -170,7 +170,7 @@ export default {
       <div class="text-sm text-muted-foreground">按日志类型分别配置自动清理策略</div>
     </div>
 
-    <div class="overflow-hidden rounded-lg border border-slate-300/80 dark:border-slate-700 bg-white/70 dark:bg-slate-900/30">
+    <div class="overflow-hidden rounded-lg border weak-divider bg-background/70 dark:bg-muted/30">
       <Table class="data-table border-collapse">
         <TableHeader>
           <TableRow>

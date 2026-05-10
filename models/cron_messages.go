@@ -55,14 +55,28 @@ func AddSendCronMsg(
 }
 
 // GetCronMessages 获取所有任务
-func GetCronMessages(pageNum int, pageSize int, name string, maps interface{}) ([]CronMessages, error) {
+func GetCronMessages(pageNum int, pageSize int, name string, maps interface{}, dateRange ...string) ([]CronMessages, error) {
 	var (
 		msgs []CronMessages
 		err  error
 	)
+	startTime := ""
+	endTime := ""
+	if len(dateRange) > 0 {
+		startTime = dateRange[0]
+	}
+	if len(dateRange) > 1 {
+		endTime = dateRange[1]
+	}
 	query := db.Where(maps)
 	if name != "" {
 		query = query.Where("name like ?", fmt.Sprintf("%%%s%%", name))
+	}
+	if startTime != "" {
+		query = query.Where("created_on >= ?", startTime)
+	}
+	if endTime != "" {
+		query = query.Where("created_on <= ?", endTime)
 	}
 	query = query.Order("created_on DESC")
 	if pageSize > 0 || pageNum > 0 {
@@ -76,14 +90,28 @@ func GetCronMessages(pageNum int, pageSize int, name string, maps interface{}) (
 }
 
 // GetCronMessagesTotal 获取所有任务总数
-func GetCronMessagesTotal(name string, maps interface{}) (int64, error) {
+func GetCronMessagesTotal(name string, maps interface{}, dateRange ...string) (int64, error) {
 	var (
 		err   error
 		total int64
 	)
+	startTime := ""
+	endTime := ""
+	if len(dateRange) > 0 {
+		startTime = dateRange[0]
+	}
+	if len(dateRange) > 1 {
+		endTime = dateRange[1]
+	}
 	query := db.Model(&CronMessages{}).Where(maps)
 	if name != "" {
 		query = query.Where("name like ?", fmt.Sprintf("%%%s%%", name))
+	}
+	if startTime != "" {
+		query = query.Where("created_on >= ?", startTime)
+	}
+	if endTime != "" {
+		query = query.Where("created_on <= ?", endTime)
 	}
 
 	err = query.Count(&total).Error

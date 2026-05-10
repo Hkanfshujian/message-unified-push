@@ -68,11 +68,14 @@ func GetMsgSendWayList(c *gin.Context) {
 	appG := app.Gin{C: c}
 	name := c.Query("name")
 	type_ := c.Query("type")
+	startTime, endTime := pickDateRangeQuery(c)
 
 	offset, limit := util.GetPageSize(c)
 	sendWayService := send_way_service.SendWay{
 		Name:     name,
 		Type:     type_,
+		StartTime: startTime,
+		EndTime:   endTime,
 		PageNum:  offset,
 		PageSize: limit,
 	}

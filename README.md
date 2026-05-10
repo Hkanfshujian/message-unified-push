@@ -19,6 +19,22 @@
 Message Unified Push 是一个面向运维告警与业务通知的统一消息推送平台。  
 它把多渠道发送、模板管理、定时任务、MQ 订阅触发、权限控制和审计日志整合到一个系统中，提供统一 API 与可视化后台。
 
+- 更新记录
+
+```shell
+## 2026-05-11 平台v1版本最后一次更新
+1、全面更新页面UI布局和组件样式，更好看
+  - 主要是侧边栏、首页、便签 等样式和动效调整
+# 注意：升级前请备份数据库
+
+## v2版本将于5月中旬或月底发布，敬请期待
+1、全新的前端框架，全新的页面样式，更现代化。以下是v2版本前瞻
+```
+
+![image-20260511000302212](https://image.hukanfa.com/public/images/image-20260511000302212.png)
+
+
+
 # 致谢
 
 本项目基于原开源项目 [Message-Push-Nest](https://github.com/engigu/Message-Push-Nest) 改造而来。
@@ -52,9 +68,9 @@ Message Unified Push 是一个面向运维告警与业务通知的统一消息�
 
 `Message Unified Push` 诞生主要适应于企业内部使用需求，相较于原项目主要改动点如下
 
-- 调整UI布局
+- 调整UI布局 - 本次更新页面内容，其他页面不贴图了。
 
-![主界面](data/demo/01.png)
+![image-20260510235805331](https://image.hukanfa.com/public/images/image-20260510235805331.png)
 
 - 增加RBAC权限管理体系，对接 Casdoor 实现企微登录
 
@@ -253,11 +269,11 @@ npm run dev
 
 
 
-# 6 交流群
+# 6 交流
 
-- 扫码进入微信交流群
+- 可加微信 fa100860804 进群交流，备注： github unified push
 
-![微信群](https://image.hukanfa.com/public/images/message_wxgroup.png)
+
 
 
 

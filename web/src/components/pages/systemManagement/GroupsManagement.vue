@@ -223,7 +223,7 @@ onMounted(async () => {
       <Button @click="openAdd">新增用户组</Button>
     </div>
 
-    <div class="rounded border border-slate-300 dark:border-slate-600 overflow-x-auto">
+    <div class="rounded border weak-divider overflow-x-auto">
       <Table class="data-table border-collapse">
       <TableHeader>
         <TableRow>
@@ -291,7 +291,7 @@ onMounted(async () => {
           <DialogTitle>确认删除用户组</DialogTitle>
         </DialogHeader>
         <div class="space-y-2">
-          <div class="text-sm text-gray-600">
+          <div class="text-sm text-muted-foreground">
             请输入用户组名称
             <span class="text-red-500 mx-1">{{ deleteTarget?.name }}</span>
             以确认删除

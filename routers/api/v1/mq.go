@@ -21,11 +21,12 @@ func (c *MQSourceController) GetMQSourceList(ctx *gin.Context) {
 	name := ctx.Query("name")
 	status := ctx.Query("status")
 	mqType := ctx.Query("type")
+	startTime, endTime := pickDateRangeQuery(ctx)
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(ctx.DefaultQuery("page_size", "20"))
 
 	service := mq_source_service.MQSourceService{}
-	sources, total, err := service.GetAll(name, status, mqType, page, pageSize)
+	sources, total, err := service.GetAll(name, status, mqType, startTime, endTime, page, pageSize)
 	if err != nil {
 		appG.CResponse(http.StatusInternalServerError, e.GetMsg(e.ERROR_GET_SOURCE_FAIL), nil)
 		return

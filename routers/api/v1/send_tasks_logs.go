@@ -2,10 +2,10 @@ package v1
 
 import (
 	"github.com/gin-gonic/gin"
+	"net/http"
 	"ops-message-unified-push/pkg/app"
 	"ops-message-unified-push/pkg/util"
 	"ops-message-unified-push/service/send_logs_service"
-	"net/http"
 )
 
 // GetMsgSendWayList 获取消息渠道列表
@@ -14,6 +14,7 @@ func GetTaskSendLogsList(c *gin.Context) {
 	name := c.Query("name")
 	taskId := c.Query("taskid")
 	query := c.Query("query")
+	status := c.Query("status")
 	startTime := c.Query("start_time")
 	endTime := c.Query("end_time")
 
@@ -24,6 +25,7 @@ func GetTaskSendLogsList(c *gin.Context) {
 		PageNum:   offset,
 		PageSize:  limit,
 		Query:     query,
+		Status:    status,
 		StartTime: startTime,
 		EndTime:   endTime,
 	}

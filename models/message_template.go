@@ -89,6 +89,14 @@ func GetTemplates(pageNum int, pageSize int, text string, maps map[string]interf
 	templateT := GetSchema(Template{})
 	
 	query := db.Table(templateT)
+	if startTime, ok := maps["start_time"]; ok && startTime != "" {
+		delete(maps, "start_time")
+		query = query.Where("created_on >= ?", startTime)
+	}
+	if endTime, ok := maps["end_time"]; ok && endTime != "" {
+		delete(maps, "end_time")
+		query = query.Where("created_on <= ?", endTime)
+	}
 	query = query.Where(maps)
 	
 	if text != "" {
@@ -113,6 +121,14 @@ func GetTemplatesTotal(text string, maps map[string]interface{}) (int64, error) 
 	templateT := GetSchema(Template{})
 	
 	query := db.Table(templateT)
+	if startTime, ok := maps["start_time"]; ok && startTime != "" {
+		delete(maps, "start_time")
+		query = query.Where("created_on >= ?", startTime)
+	}
+	if endTime, ok := maps["end_time"]; ok && endTime != "" {
+		delete(maps, "end_time")
+		query = query.Where("created_on <= ?", endTime)
+	}
 	query = query.Where(maps)
 	
 	if text != "" {

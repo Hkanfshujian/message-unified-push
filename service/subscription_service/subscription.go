@@ -281,13 +281,13 @@ func (s *SubscriptionService) validateGroupTopicUnique(sourceID, topic, groupNam
 }
 
 // GetAll 获取订阅列表
-func (s *SubscriptionService) GetAll(name, status, sourceID string, page, pageSize int) ([]SubscriptionListItem, int64, error) {
-	subscriptions, err := models.GetSubscriptions(page, pageSize, name, sourceID, status, "")
+func (s *SubscriptionService) GetAll(name, status, sourceID, startTime, endTime string, page, pageSize int) ([]SubscriptionListItem, int64, error) {
+	subscriptions, err := models.GetSubscriptions(page, pageSize, name, sourceID, status, "", startTime, endTime)
 	if err != nil {
 		return nil, 0, fmt.Errorf("获取订阅列表失败: %w", err)
 	}
 
-	total, err := models.GetSubscriptionsTotal(name, sourceID, status, "")
+	total, err := models.GetSubscriptionsTotal(name, sourceID, status, "", startTime, endTime)
 	if err != nil {
 		return nil, 0, fmt.Errorf("获取订阅总数失败: %w", err)
 	}

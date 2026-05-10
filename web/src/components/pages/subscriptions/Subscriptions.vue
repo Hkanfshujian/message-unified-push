@@ -10,8 +10,10 @@ import EmptyTableState from '@/components/ui/EmptyTableState.vue'
 import Pagination from '@/components/ui/Pagination.vue'
 import { toast } from 'vue-sonner'
 import { request } from '@/api/api'
+import { useRoute, useRouter } from 'vue-router'
 // @ts-ignore
 import { getPageSize } from '@/util/pageUtils'
+import { appendDateRangeQuery, pickDateRangeQuery } from '@/util/routeQuery'
 import SubscriptionForm from './SubscriptionForm.vue'
 
 interface SubscriptionItem {
@@ -62,6 +64,8 @@ let state = reactive({
   pageSize: getPageSize(),
   search: '',
 })
+const route = useRoute()
+const router = useRouter()
 
 // 过滤条件
 const selectedStatus = ref('all')
@@ -79,6 +83,28 @@ const editData = ref<SubscriptionItem | null>(null)
 // 总页数
 const totalPages = computed(() => Math.ceil(state.total / state.pageSize))
 
+const parsePositiveNumber = (value: unknown, fallback: number) => {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return fallback
+  return Math.floor(n)
+}
+
+const buildRouteQuery = () => {
+  const nextQuery: Record<string, string> = {}
+  const name = state.search.trim()
+  if (name) nextQuery.name = name
+  if (selectedSource.value && selectedSource.value !== 'all') nextQuery.source_id = selectedSource.value
+  if (selectedStatus.value && selectedStatus.value !== 'all') nextQuery.status = selectedStatus.value
+  nextQuery.page = String(state.currPage)
+  nextQuery.page_size = String(state.pageSize)
+  appendDateRangeQuery(nextQuery, route.query as Record<string, unknown>)
+  return nextQuery
+}
+
+const syncRouteQuery = async () => {
+  await router.replace({ path: route.path, query: buildRouteQuery() })
+}
+
 // 获取状态文本
 const getStatusText = (status: string) => {
   const statusMap: Record<string, string> = {
@@ -92,7 +118,7 @@ const getStatusText = (status: string) => {
 const getStatusClass = (status: string) => {
   return status === 'running'
     ? 'bg-green-100 text-green-800 border-green-200'
-    : 'bg-gray-100 text-gray-700 border-gray-200'
+    : 'bg-muted text-muted-foreground border-[var(--line-weak)]'
 }
 
 const formatLastConsumeTime = (value: string) => {
@@ -106,7 +132,7 @@ const getStatClass = (value: number, kind: 'consume' | 'sent' | 'failed') => {
   if (!value) return 'text-muted-foreground'
   if (kind === 'failed') return 'text-red-600'
   if (kind === 'sent') return 'text-green-700'
-  return 'text-slate-700 dark:text-slate-200'
+  return 'text-foreground'
 }
 
 // 加载数据源选项
@@ -175,6 +201,9 @@ const queryListData = async (page: number, pageSize: number, name: string, sourc
     if (name) params.name = name
     if (sourceId && sourceId !== 'all') params.source_id = sourceId
     if (status && status !== 'all') params.status = status
+    const { startTime, endTime } = pickDateRangeQuery(route.query as Record<string, unknown>)
+    if (startTime) params.start_time = startTime
+    if (endTime) params.end_time = endTime
 
     const res = await request.get('/subscriptions/list', { params })
     if (res.data.code === 200) {
@@ -199,6 +228,7 @@ const queryListDataWithStatus = async () => {
 const changePage = async (page: number) => {
   if (page >= 1 && page <= totalPages.value) {
     state.currPage = page
+    await syncRouteQuery()
     await queryListDataWithStatus()
   }
 }
@@ -207,12 +237,14 @@ const handlePageSizeChange = async (size: number) => {
   if (size <= 0) return
   state.pageSize = size
   state.currPage = 1
+  await syncRouteQuery()
   await queryListDataWithStatus()
 }
 
 // 过滤
 const filterFunc = async () => {
   state.currPage = 1
+  await syncRouteQuery()
   await queryListDataWithStatus()
 }
 
@@ -220,6 +252,7 @@ const filterBySource = async (value: any) => {
   if (value) {
     selectedSource.value = String(value)
     state.currPage = 1
+    await syncRouteQuery()
     await queryListDataWithStatus()
   }
 }
@@ -228,6 +261,7 @@ const filterByStatus = async (value: any) => {
   if (value) {
     selectedStatus.value = String(value)
     state.currPage = 1
+    await syncRouteQuery()
     await queryListDataWithStatus()
   }
 }
@@ -274,6 +308,12 @@ const handleSaveSuccess = () => {
 }
 
 onMounted(() => {
+  state.search = typeof route.query.name === 'string' ? route.query.name : ''
+  selectedSource.value = typeof route.query.source_id === 'string' && route.query.source_id ? route.query.source_id : 'all'
+  selectedStatus.value = typeof route.query.status === 'string' && route.query.status ? route.query.status : 'all'
+  state.currPage = parsePositiveNumber(route.query.page, 1)
+  state.pageSize = parsePositiveNumber(route.query.page_size, state.pageSize)
+  syncRouteQuery()
   loadSourceOptions()
   loadTemplateOptions()
   queryListDataWithStatus()
@@ -320,7 +360,7 @@ onMounted(() => {
       <Button class="primary-btn" v-permission="'data:subscription:add'" @click="isAddDialogOpen = true">新增订阅</Button>
     </div>
 
-    <div class="rounded border border-slate-300 dark:border-slate-600 overflow-x-auto">
+    <div class="rounded border weak-divider overflow-x-auto">
       <Table class="data-table border-collapse">
         <TableHeader>
           <TableRow>

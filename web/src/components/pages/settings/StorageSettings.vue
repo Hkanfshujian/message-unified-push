@@ -5,7 +5,14 @@ import { toast } from 'vue-sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Copy, Folder, FolderOpen, ChevronRight, CheckCircle2, Circle } from 'lucide-vue-next'
+import {
+  CopyOutlined,
+  FolderOutlined,
+  FolderOpenOutlined,
+  RightOutlined,
+  CheckCircleOutlined,
+  CheckCircleFilled
+} from '@ant-design/icons-vue'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -712,9 +719,9 @@ const browseThumbGridClass = computed(() => {
 })
 
 const browseThumbPreviewClass = computed(() => {
-  if (browseThumbSize.value === 'sm') return 'w-full h-20 rounded border bg-slate-50 dark:bg-slate-900 overflow-hidden flex items-center justify-center'
-  if (browseThumbSize.value === 'lg') return 'w-full h-36 rounded border bg-slate-50 dark:bg-slate-900 overflow-hidden flex items-center justify-center'
-  return 'w-full h-28 rounded border bg-slate-50 dark:bg-slate-900 overflow-hidden flex items-center justify-center'
+  if (browseThumbSize.value === 'sm') return 'w-full h-20 rounded border weak-divider bg-muted/40 dark:bg-muted/20 overflow-hidden flex items-center justify-center'
+  if (browseThumbSize.value === 'lg') return 'w-full h-36 rounded border weak-divider bg-muted/40 dark:bg-muted/20 overflow-hidden flex items-center justify-center'
+  return 'w-full h-28 rounded border weak-divider bg-muted/40 dark:bg-muted/20 overflow-hidden flex items-center justify-center'
 })
 const browseDialogWidthClass = computed(() => {
   if (browseViewMode.value === 'thumb') return '!w-[56vw] !max-w-[56vw] !sm:max-w-[792px]'
@@ -1078,9 +1085,9 @@ onBeforeUnmount(() => {
       <Button type="button" variant="outline" @click="openCreateDialog">新建存储</Button>
     </div>
 
-    <div class="rounded border border-slate-300 dark:border-slate-600 overflow-x-auto">
+    <div class="rounded border weak-divider overflow-x-auto">
       <div class="min-w-[1160px] divide-y">
-        <div class="grid grid-cols-[140px_220px_100px_minmax(220px,1fr)_120px_280px] py-2 text-xs text-muted-foreground divide-x divide-slate-300/80 dark:divide-slate-600/80 bg-slate-50/60 dark:bg-slate-900/40 [&>div]:px-3">
+        <div class="grid grid-cols-[140px_220px_100px_minmax(220px,1fr)_120px_280px] py-2 text-xs text-muted-foreground divide-x divide-[var(--line-weak)] bg-muted/40 dark:bg-muted/20 [&>div]:px-3">
           <div class="text-center">存储ID</div>
           <div class="text-center">存储名称</div>
           <div class="text-center">类型</div>
@@ -1091,7 +1098,7 @@ onBeforeUnmount(() => {
         <div
           v-for="profile in profiles"
           :key="profile.id"
-          class="grid grid-cols-[140px_220px_100px_minmax(220px,1fr)_120px_280px] py-3 items-center divide-x divide-slate-300/70 dark:divide-slate-600/70 [&>div]:px-3"
+          class="grid grid-cols-[140px_220px_100px_minmax(220px,1fr)_120px_280px] py-3 items-center divide-x divide-[var(--line-weak)] [&>div]:px-3"
         >
           <div class="min-w-0 flex items-center gap-2">
             <span class="text-xs text-muted-foreground font-mono truncate" :title="profile.id">{{ profile.id }}</span>
@@ -1102,7 +1109,7 @@ onBeforeUnmount(() => {
               aria-label="复制存储ID"
               @click="copyText(profile.id, '存储ID')"
             >
-              <Copy class="h-3.5 w-3.5" />
+              <CopyOutlined class="text-[14px]" />
             </button>
           </div>
           <div class="min-w-0">
@@ -1115,7 +1122,7 @@ onBeforeUnmount(() => {
                 aria-label="复制存储名称"
                 @click="copyText(profile.name, '存储名称')"
               >
-                <Copy class="h-3.5 w-3.5" />
+                <CopyOutlined class="text-[14px]" />
               </button>
             </div>
           </div>
@@ -1138,7 +1145,7 @@ onBeforeUnmount(() => {
                 aria-label="复制路径前缀"
                 @click="copyText(`${profile.s3_bucket}/${profile.s3_object_key_prefix}`, '路径前缀')"
               >
-                <Copy class="h-3.5 w-3.5" />
+                <CopyOutlined class="text-[14px]" />
               </button>
             </span>
             <span v-else class="inline-flex items-center gap-2 max-w-full">
@@ -1150,7 +1157,7 @@ onBeforeUnmount(() => {
                 aria-label="复制路径前缀"
                 @click="copyText(`./data/${profile.local_sub_path || 'uploads'}`, '路径前缀')"
               >
-                <Copy class="h-3.5 w-3.5" />
+                <CopyOutlined class="text-[14px]" />
               </button>
             </span>
           </div>
@@ -1160,13 +1167,13 @@ onBeforeUnmount(() => {
               class="inline-flex items-center justify-center h-8 w-8 rounded-full border transition-colors"
               :class="defaultStorageID === profile.id
                 ? 'border-emerald-300 bg-emerald-100 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 cursor-default pointer-events-none'
-                : 'border-slate-300 bg-white text-slate-600 hover:border-emerald-300 hover:text-emerald-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-emerald-700 dark:hover:text-emerald-300'"
+                : 'weak-divider bg-white text-muted-foreground hover:border-emerald-300 hover:text-emerald-700 dark:bg-muted/20 dark:hover:border-emerald-700 dark:hover:text-emerald-300'"
               :title="defaultStorageID === profile.id ? '默认存储' : '设为默认存储'"
               :disabled="saving || loading"
               @click="setDefaultStorage(profile.id)"
             >
-              <CheckCircle2 v-if="defaultStorageID === profile.id" class="w-3.5 h-3.5" />
-              <Circle v-else class="w-3.5 h-3.5" />
+              <CheckCircleFilled v-if="defaultStorageID === profile.id" class="text-[14px]" />
+              <CheckCircleOutlined v-else class="text-[14px]" />
             </button>
           </div>
           <div class="flex items-center justify-end gap-2">
@@ -1174,7 +1181,7 @@ onBeforeUnmount(() => {
             type="button"
             variant="outline"
             size="sm"
-            class="border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            class="weak-divider bg-muted/40 text-muted-foreground hover:bg-muted hover:border-[var(--line-weak)] dark:bg-muted/20 dark:hover:bg-muted/40"
             :disabled="saving || loading"
             @click="handleBrowseClick(profile)"
           >
@@ -1184,7 +1191,7 @@ onBeforeUnmount(() => {
             type="button"
             variant="outline"
             size="sm"
-            class="border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            class="weak-divider bg-muted/40 text-muted-foreground hover:bg-muted hover:border-[var(--line-weak)] dark:bg-muted/20 dark:hover:bg-muted/40"
             :disabled="localUploadTesting || saving || loading"
             @click="handleTestClick(profile)"
           >
@@ -1194,7 +1201,7 @@ onBeforeUnmount(() => {
             type="button"
             variant="outline"
             size="sm"
-            class="border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            class="weak-divider bg-muted/40 text-muted-foreground hover:bg-muted hover:border-[var(--line-weak)] dark:bg-muted/20 dark:hover:bg-muted/40"
             :disabled="saving || loading"
             @click="openEditDialog(profile)"
           >
@@ -1234,7 +1241,7 @@ onBeforeUnmount(() => {
               <button
                 type="button"
                 class="px-3 py-1.5 text-sm rounded border transition-colors"
-                :class="editor.provider === 'local' ? 'border-brand-500 bg-brand-50 dark:bg-slate-800' : 'border-gray-200 dark:border-slate-700'"
+                :class="editor.provider === 'local' ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/30' : 'weak-divider'"
                 @click="editor.provider = 'local'"
               >
                 本地
@@ -1242,7 +1249,7 @@ onBeforeUnmount(() => {
               <button
                 type="button"
                 class="px-3 py-1.5 text-sm rounded border transition-colors"
-                :class="editor.provider === 's3' ? 'border-brand-500 bg-brand-50 dark:bg-slate-800' : 'border-gray-200 dark:border-slate-700'"
+                :class="editor.provider === 's3' ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/30' : 'weak-divider'"
                 @click="editor.provider = 's3'"
               >
                 S3
@@ -1254,7 +1261,7 @@ onBeforeUnmount(() => {
             <div class="space-y-2">
               <div class="text-sm">本地路径</div>
               <div class="flex items-center gap-2">
-                <div class="px-3 py-2 text-sm rounded border bg-slate-50 text-slate-600 dark:bg-slate-900 dark:text-slate-300">./data/</div>
+                <div class="px-3 py-2 text-sm rounded border weak-divider bg-muted/40 text-muted-foreground dark:bg-muted/20">./data/</div>
                 <Input v-model="editor.local_sub_path" placeholder="例如 uploads/oidc" />
                 <Button
                   type="button"
@@ -1264,7 +1271,7 @@ onBeforeUnmount(() => {
                   class="border-brand-200 bg-brand-50 text-brand-600 hover:bg-brand-100 hover:border-brand-300 dark:border-brand-700/60 dark:bg-brand-900/30 dark:text-brand-300 dark:hover:bg-brand-900/40"
                   @click="openLocalDirDialog"
                 >
-                  <FolderOpen class="w-4 h-4" />
+                  <FolderOpenOutlined class="text-[16px]" />
                 </Button>
               </div>
               <div class="flex items-center gap-2">
@@ -1296,7 +1303,7 @@ onBeforeUnmount(() => {
                 <button
                   type="button"
                   class="px-3 py-1.5 text-sm rounded border transition-colors"
-                  :class="editor.s3_use_ssl ? 'border-brand-500 bg-brand-50 dark:bg-slate-800' : 'border-gray-200 dark:border-slate-700'"
+                  :class="editor.s3_use_ssl ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/30' : 'weak-divider'"
                   @click="editor.s3_use_ssl = true"
                 >
                   开启
@@ -1304,7 +1311,7 @@ onBeforeUnmount(() => {
                 <button
                   type="button"
                   class="px-3 py-1.5 text-sm rounded border transition-colors"
-                  :class="!editor.s3_use_ssl ? 'border-brand-500 bg-brand-50 dark:bg-slate-800' : 'border-gray-200 dark:border-slate-700'"
+                  :class="!editor.s3_use_ssl ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/30' : 'weak-divider'"
                   @click="editor.s3_use_ssl = false"
                 >
                   关闭
@@ -1317,7 +1324,7 @@ onBeforeUnmount(() => {
                 <button
                   type="button"
                   class="px-3 py-1.5 text-sm rounded border transition-colors"
-                  :class="editor.s3_proxy_public_read ? 'border-brand-500 bg-brand-50 dark:bg-slate-800' : 'border-gray-200 dark:border-slate-700'"
+                  :class="editor.s3_proxy_public_read ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/30' : 'weak-divider'"
                   @click="editor.s3_proxy_public_read = true"
                 >
                   开启
@@ -1325,7 +1332,7 @@ onBeforeUnmount(() => {
                 <button
                   type="button"
                   class="px-3 py-1.5 text-sm rounded border transition-colors"
-                  :class="!editor.s3_proxy_public_read ? 'border-brand-500 bg-brand-50 dark:bg-slate-800' : 'border-gray-200 dark:border-slate-700'"
+                  :class="!editor.s3_proxy_public_read ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/30' : 'weak-divider'"
                   @click="editor.s3_proxy_public_read = false"
                 >
                   关闭
@@ -1347,7 +1354,7 @@ onBeforeUnmount(() => {
           <DialogTitle>确认删除存储配置</DialogTitle>
         </DialogHeader>
         <div class="space-y-2">
-          <div class="text-sm text-gray-600">
+          <div class="text-sm text-muted-foreground">
             请输入要删除的存储名称
             <span v-if="deleteTarget?.name" class="text-red-500 font-semibold mx-1">{{ deleteTarget.name }}</span>
             以确认操作
@@ -1387,8 +1394,8 @@ onBeforeUnmount(() => {
                 :disabled="browseLoading"
                 @click="openBrowseBreadcrumb(crumb.path)"
               >
-                <ChevronRight v-if="index > 0" class="w-3.5 h-3.5" />
-                <Folder v-if="index === 0" class="w-3.5 h-3.5" />
+                <RightOutlined v-if="index > 0" class="text-[13px]" />
+                <FolderOutlined v-if="index === 0" class="text-[13px]" />
                 <span class="max-w-[240px] truncate align-bottom">{{ crumb.label }}</span>
               </button>
             </div>
@@ -1398,11 +1405,11 @@ onBeforeUnmount(() => {
               返回上级
             </Button>
             <Input v-model="browseKeyword" class="h-8 w-full min-w-[240px]" placeholder="按名称筛选文件/目录" />
-            <div class="inline-flex items-center gap-1 rounded border p-1">
+            <div class="inline-flex items-center gap-1 rounded border weak-divider p-1">
               <button
                 type="button"
                 class="px-2 py-1 text-xs rounded"
-                :class="browseViewMode === 'list' ? 'bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-brand-300' : 'text-muted-foreground'"
+                :class="browseViewMode === 'list' ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-300' : 'text-muted-foreground'"
                 @click="browseViewMode = 'list'"
               >
                 列表
@@ -1410,20 +1417,20 @@ onBeforeUnmount(() => {
               <button
                 type="button"
                 class="px-2 py-1 text-xs rounded"
-                :class="browseViewMode === 'thumb' ? 'bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-brand-300' : 'text-muted-foreground'"
+                :class="browseViewMode === 'thumb' ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-300' : 'text-muted-foreground'"
                 @click="browseViewMode = 'thumb'"
               >
                 缩略图
               </button>
             </div>
             <div
-              class="inline-flex w-[132px] items-center gap-1 rounded border p-1 transition-opacity"
+              class="inline-flex w-[132px] items-center gap-1 rounded border weak-divider p-1 transition-opacity"
               :class="browseViewMode === 'thumb' ? 'opacity-100' : 'opacity-0 pointer-events-none'"
             >
               <button
                 type="button"
                 class="px-2 py-1 text-xs rounded"
-                :class="browseThumbSize === 'sm' ? 'bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-brand-300' : 'text-muted-foreground'"
+                :class="browseThumbSize === 'sm' ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-300' : 'text-muted-foreground'"
                 @click="browseThumbSize = 'sm'"
               >
                 小
@@ -1431,7 +1438,7 @@ onBeforeUnmount(() => {
               <button
                 type="button"
                 class="px-2 py-1 text-xs rounded"
-                :class="browseThumbSize === 'md' ? 'bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-brand-300' : 'text-muted-foreground'"
+                :class="browseThumbSize === 'md' ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-300' : 'text-muted-foreground'"
                 @click="browseThumbSize = 'md'"
               >
                 中
@@ -1439,22 +1446,22 @@ onBeforeUnmount(() => {
               <button
                 type="button"
                 class="px-2 py-1 text-xs rounded"
-                :class="browseThumbSize === 'lg' ? 'bg-brand-50 text-brand-600 dark:bg-slate-800 dark:text-brand-300' : 'text-muted-foreground'"
+                :class="browseThumbSize === 'lg' ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-300' : 'text-muted-foreground'"
                 @click="browseThumbSize = 'lg'"
               >
                 大
               </button>
             </div>
           </div>
-          <div v-if="browseViewMode === 'list'" class="rounded border max-h-[360px] overflow-y-auto divide-y">
+          <div v-if="browseViewMode === 'list'" class="rounded border weak-divider max-h-[360px] overflow-y-auto divide-y">
             <div
               v-for="item in filteredBrowseDirectories"
               :key="item.relative_path"
-              class="flex items-center gap-3 px-3 py-2 hover:bg-slate-50/80 dark:hover:bg-slate-900/40 cursor-pointer"
+              class="flex items-center gap-3 px-3 py-2 hover:bg-muted/70 dark:hover:bg-muted/30 cursor-pointer"
               @click="openBrowseChild(item)"
             >
               <div class="inline-flex h-7 w-7 items-center justify-center rounded border border-brand-200 bg-brand-50 text-brand-600 dark:border-brand-700/60 dark:bg-brand-900/30 dark:text-brand-300 shrink-0">
-                <Folder class="w-4 h-4" />
+                <FolderOutlined class="text-[16px]" />
               </div>
               <div class="text-sm min-w-0">
                 <div class="truncate font-medium">{{ item.name }}</div>
@@ -1464,7 +1471,7 @@ onBeforeUnmount(() => {
             <div
               v-for="file in filteredBrowseFiles"
               :key="file.object_key || file.relative_path"
-              class="flex items-center justify-between gap-3 px-3 py-2 hover:bg-slate-50/80 dark:hover:bg-slate-900/40"
+              class="flex items-center justify-between gap-3 px-3 py-2 hover:bg-muted/70 dark:hover:bg-muted/30"
             >
               <div class="min-w-0 text-sm">
                 <div class="truncate font-medium">{{ file.name }}</div>
@@ -1493,17 +1500,17 @@ onBeforeUnmount(() => {
               当前路径下暂无内容
             </div>
           </div>
-          <div v-else class="rounded border max-h-[360px] overflow-y-auto p-3 space-y-3">
+          <div v-else class="rounded border weak-divider max-h-[360px] overflow-y-auto p-3 space-y-3">
             <div v-if="filteredBrowseDirectories.length > 0" class="grid grid-cols-2 md:grid-cols-3 gap-2">
               <button
                 v-for="item in filteredBrowseDirectories"
                 :key="`thumb-dir-${item.relative_path}`"
                 type="button"
-                class="rounded border px-3 py-2 text-left hover:bg-slate-50/80 dark:hover:bg-slate-900/40"
+                class="rounded border weak-divider px-3 py-2 text-left hover:bg-muted/70 dark:hover:bg-muted/30"
                 @click="openBrowseChild(item)"
               >
                 <div class="inline-flex h-8 w-8 items-center justify-center rounded border border-brand-200 bg-brand-50 text-brand-600 dark:border-brand-700/60 dark:bg-brand-900/30 dark:text-brand-300">
-                  <Folder class="w-4 h-4" />
+                  <FolderOutlined class="text-[16px]" />
                 </div>
                 <div class="mt-1 text-sm truncate font-medium">{{ item.name }}</div>
               </button>
@@ -1512,7 +1519,7 @@ onBeforeUnmount(() => {
               <div
                 v-for="file in browseThumbFiles"
                 :key="`thumb-file-${file.object_key || file.relative_path}`"
-                class="rounded border p-2 space-y-2"
+                class="rounded border weak-divider p-2 space-y-2"
               >
                 <button
                   type="button"
@@ -1526,7 +1533,7 @@ onBeforeUnmount(() => {
                     class="w-full h-full object-cover"
                     :alt="file.name"
                   >
-                  <FolderOpen v-else class="w-7 h-7 text-slate-400" />
+                  <FolderOpenOutlined v-else class="text-[28px] text-muted-foreground" />
                 </button>
                 <div class="text-xs">
                   <div class="truncate font-medium" :title="file.name">{{ file.name }}</div>
@@ -1558,7 +1565,7 @@ onBeforeUnmount(() => {
         <div class="space-y-2">
           <div class="text-sm font-medium truncate" :title="filePreviewName">{{ filePreviewName }}</div>
           <div class="text-xs text-muted-foreground truncate" :title="filePreviewPath">{{ filePreviewPath }}</div>
-          <div class="rounded border bg-slate-50 dark:bg-slate-900 h-[68vh] overflow-hidden">
+          <div class="rounded border weak-divider bg-muted/40 dark:bg-muted/20 h-[68vh] overflow-hidden">
             <img
               v-if="filePreviewIsImage"
               :src="filePreviewUrl"
@@ -1589,8 +1596,8 @@ onBeforeUnmount(() => {
           <DialogTitle>确认删除文件</DialogTitle>
         </DialogHeader>
         <div class="space-y-2 text-sm">
-          <div class="text-slate-700 dark:text-slate-200">该操作不可恢复，确认要删除以下文件吗？</div>
-          <div class="rounded border bg-slate-50 dark:bg-slate-900 px-3 py-2">
+          <div class="text-foreground">该操作不可恢复，确认要删除以下文件吗？</div>
+          <div class="rounded border weak-divider bg-muted/40 dark:bg-muted/20 px-3 py-2">
             <div class="font-medium truncate" :title="fileDeleteTargetName">{{ fileDeleteTargetName }}</div>
             <div class="text-xs text-muted-foreground truncate" :title="fileDeleteTargetObjectKey || fileDeleteTargetPath">{{ fileDeleteTargetObjectKey || fileDeleteTargetPath }}</div>
           </div>
@@ -1616,19 +1623,19 @@ onBeforeUnmount(() => {
           <div class="flex items-center gap-2">
             <button
               type="button"
-              class="inline-flex items-center gap-1.5 text-sm text-slate-700 dark:text-slate-200"
+              class="inline-flex items-center gap-1.5 text-sm text-foreground"
               :title="localUploadDeleteAfter ? '上传成功后将立即删除该文件' : '上传成功后保留该文件'"
               @click="localUploadDeleteAfter = !localUploadDeleteAfter"
             >
-              <CheckCircle2 v-if="localUploadDeleteAfter" class="w-4 h-4 text-brand-600" />
-              <Circle v-else class="w-4 h-4 text-slate-400" />
+              <CheckCircleFilled v-if="localUploadDeleteAfter" class="text-[16px] text-brand-600" />
+              <CheckCircleOutlined v-else class="text-[16px] text-muted-foreground" />
               <span>上传后立即删除</span>
             </button>
           </div>
           <input
             ref="localUploadFileInputRef"
             type="file"
-            class="w-full text-sm file:mr-3 file:px-3 file:py-1.5 file:rounded file:border file:bg-slate-50 file:text-slate-700"
+            class="w-full text-sm file:mr-3 file:px-3 file:py-1.5 file:rounded file:border file:bg-muted file:text-foreground"
             @change="handleLocalUploadFileChange"
           />
           <div v-if="localUploadTestFile" class="flex items-center justify-between gap-2">
@@ -1675,15 +1682,15 @@ onBeforeUnmount(() => {
               :disabled="localDirLoading"
               @click="openBreadcrumbDirectory(crumb.path)"
             >
-              <ChevronRight v-if="index > 0" class="w-3.5 h-3.5" />
-              <Folder v-if="index === 0" class="w-3.5 h-3.5" />
+              <RightOutlined v-if="index > 0" class="text-[13px]" />
+              <FolderOutlined v-if="index === 0" class="text-[13px]" />
               <span>{{ crumb.label }}</span>
             </button>
             <span
               v-if="isCurrentDirSelected"
               class="ml-1 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded border border-blue-200 bg-blue-50 text-brand-600"
             >
-              <CheckCircle2 class="w-3 h-3" />
+              <CheckCircleFilled class="text-[12px]" />
               已选中
             </span>
           </div>
@@ -1707,17 +1714,17 @@ onBeforeUnmount(() => {
             </Button>
           </div>
           <div class="text-[11px] text-muted-foreground">快捷键：在“新建子目录名称”输入框按 Enter 创建目录，按 Ctrl + Enter 选择当前目录</div>
-          <div class="rounded border max-h-[320px] overflow-y-auto divide-y">
+          <div class="rounded border weak-divider max-h-[320px] overflow-y-auto divide-y">
             <div
               v-for="item in localDirItems"
               :key="item.relative_path"
-              class="flex items-center gap-3 px-3 py-2 hover:bg-slate-50/80 dark:hover:bg-slate-900/40 cursor-pointer"
+              class="flex items-center gap-3 px-3 py-2 hover:bg-muted/70 dark:hover:bg-muted/30 cursor-pointer"
               :class="item.relative_path === selectedLocalDirPath ? 'bg-brand-50/70 dark:bg-brand-900/20' : ''"
               @click="openChildDirectory(item)"
             >
               <div class="flex items-center gap-2 min-w-0 text-sm hover:text-brand-600 text-left">
                 <div class="inline-flex h-7 w-7 items-center justify-center rounded border border-brand-200 bg-brand-50 text-brand-600 dark:border-brand-700/60 dark:bg-brand-900/30 dark:text-brand-300 shrink-0">
-                  <Folder class="w-4 h-4" />
+                  <FolderOutlined class="text-[16px]" />
                 </div>
                 <div class="min-w-0">
                   <div class="truncate font-medium">{{ item.name }}</div>

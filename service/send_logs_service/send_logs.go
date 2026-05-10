@@ -3,8 +3,8 @@ package send_logs_service
 import (
 	"encoding/json"
 	"github.com/sirupsen/logrus"
-	"ops-message-unified-push/models"
 	"net/url"
+	"ops-message-unified-push/models"
 )
 
 type SendTaskLogsService struct {
@@ -12,6 +12,7 @@ type SendTaskLogsService struct {
 	TaskId    string
 	Name      string
 	Query     string
+	Status    string
 	StartTime string
 	EndTime   string
 
@@ -57,6 +58,9 @@ func (st *SendTaskLogsService) getMaps() map[string]interface{} {
 			logrus.Errorf("queryJson反序列化失败: %s", err)
 			return maps
 		}
+	}
+	if st.Status != "" && st.Status != "all" {
+		maps["status"] = st.Status
 	}
 	return maps
 }

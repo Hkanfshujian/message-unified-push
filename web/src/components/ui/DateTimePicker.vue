@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { ChevronDown } from 'lucide-vue-next'
+import { DownOutlined } from '@ant-design/icons-vue'
 
 interface Props {
   modelValue: string
@@ -232,7 +232,7 @@ onBeforeUnmount(() => {
         {{ displayValue || placeholder }}
       </span>
       <span class="datetime-picker-arrow" :class="{ open: isOpen }">
-        <ChevronDown class="datetime-picker-arrow-icon" />
+        <DownOutlined class="datetime-picker-arrow-icon" />
       </span>
     </button>
 
@@ -364,9 +364,7 @@ onBeforeUnmount(() => {
 }
 
 .datetime-picker-arrow-icon {
-  width: 14px;
-  height: 14px;
-  stroke-width: 2.25;
+  font-size: 14px;
 }
 
 .datetime-picker-arrow.open {

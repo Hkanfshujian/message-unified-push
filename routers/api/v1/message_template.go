@@ -19,11 +19,14 @@ func GetMessageTemplateList(c *gin.Context) {
 	appG := app.Gin{C: c}
 	text := c.Query("text")
 	status := c.Query("status")
+	startTime, endTime := pickDateRangeQuery(c)
 
 	offset, limit := util.GetPageSize(c)
 	templateService := message_template_service.TemplateService{
 		Text:     text,
 		Status:   status,
+		StartTime: startTime,
+		EndTime:   endTime,
 		PageNum:  offset,
 		PageSize: limit,
 	}

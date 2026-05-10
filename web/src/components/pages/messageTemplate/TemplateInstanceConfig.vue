@@ -21,7 +21,7 @@ defineEmits<{
 <template>
   <Dialog :open="open" @update:open="(value) => $emit('update:open', value)">
     <DialogContent class="w-[min(855px,98vw)] !max-w-[98vw] sm:!max-w-[98vw] max-h-[90vh] overflow-hidden flex flex-col">
-      <DialogHeader class="flex-shrink-0 border-b border-border/60 pb-3">
+      <DialogHeader class="flex-shrink-0 border-b weak-divider pb-3">
         <DialogTitle>配置发送实例</DialogTitle>
       </DialogHeader>
 

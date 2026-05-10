@@ -379,7 +379,7 @@ watch(() => props.open, (newVal) => {
 <template>
   <Dialog :open="open" @update:open="(value) => $emit('update:open', value)">
     <DialogContent class="w-[min(855px,98vw)] !max-w-[98vw] sm:!max-w-[98vw] max-h-[90vh] overflow-hidden flex flex-col">
-      <DialogHeader class="flex-shrink-0 border-b border-border/60 pb-3">
+      <DialogHeader class="flex-shrink-0 border-b weak-divider pb-3">
         <DialogTitle>{{ isEditing ? '编辑模板' : '新建模板' }}</DialogTitle>
       </DialogHeader>
       <div class="space-y-4 flex-1 overflow-y-auto pr-2 mt-4">
@@ -469,7 +469,7 @@ watch(() => props.open, (newVal) => {
         <div class="space-y-2">
           <Label>@提醒配置 <span class="text-xs text-muted-foreground font-normal">（适用于钉钉、企业微信等）</span></Label>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
-            <div class="flex items-center gap-2 px-3 py-2 border rounded-md">
+            <div class="flex items-center gap-2 px-3 py-2 border weak-divider rounded-md">
               <Checkbox 
                 id="is_at_all" 
                 :model-value="formData.is_at_all"
@@ -555,7 +555,7 @@ watch(() => props.open, (newVal) => {
             <!-- 预览区 -->
             <div v-if="showPreview" class="space-y-2">
               <Label>预览效果</Label>
-              <div class="p-4 border rounded-md bg-muted/50">
+              <div class="p-4 border weak-divider rounded-md bg-muted/50">
                 <pre class="whitespace-pre-wrap text-sm">{{ previewData.text || '无内容' }}</pre>
               </div>
             </div>
@@ -589,7 +589,7 @@ watch(() => props.open, (newVal) => {
             <!-- 预览区 -->
             <div v-if="showPreview" class="space-y-2">
               <Label>预览效果（基础渲染）</Label>
-              <div class="p-4 border rounded-md bg-muted/50">
+              <div class="p-4 border weak-divider rounded-md bg-muted/50">
                 <div v-html="previewData.html || '无内容'"></div>
               </div>
               <p class="text-xs text-muted-foreground">
@@ -626,7 +626,7 @@ watch(() => props.open, (newVal) => {
             <!-- 预览区 -->
             <div v-if="showPreview" class="space-y-2">
               <Label>预览效果（原始格式）</Label>
-              <div class="p-4 border rounded-md bg-muted/50">
+              <div class="p-4 border weak-divider rounded-md bg-muted/50">
                 <pre class="whitespace-pre-wrap text-sm">{{ previewData.markdown || '无内容' }}</pre>
               </div>
               <p class="text-xs text-muted-foreground">
@@ -636,7 +636,7 @@ watch(() => props.open, (newVal) => {
           </TabsContent>
         </Tabs>
       </div>
-      <DialogFooter class="flex-shrink-0 border-t border-border/60 pt-3">
+      <DialogFooter class="flex-shrink-0 border-t weak-divider pt-3">
         <Button variant="outline" @click="$emit('update:open', false)">取消</Button>
         <Button @click="saveTemplate">保存</Button>
       </DialogFooter>

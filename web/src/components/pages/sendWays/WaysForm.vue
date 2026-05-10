@@ -17,19 +17,19 @@ import {
   TooltipTrigger
 } from '@/components/ui/tooltip'
 import {
-  Mail,
-  Zap,
-  Building2,
-  Bird,
-  PlugZap,
-  Smartphone,
-  BellRing,
-  QrCode,
-  Send,
-  Megaphone,
-  ShieldCheck,
-  Briefcase
-} from 'lucide-vue-next'
+  MailOutlined,
+  ThunderboltOutlined,
+  BankOutlined,
+  RocketOutlined,
+  ApiOutlined,
+  MobileOutlined,
+  BellOutlined,
+  QrcodeOutlined,
+  SendOutlined,
+  NotificationOutlined,
+  SafetyCertificateOutlined,
+  AppstoreOutlined
+} from '@ant-design/icons-vue'
 
 // 组件props
 interface Props {
@@ -366,20 +366,20 @@ const handleSave = async () => {
 // 渠道图标映射
 const getChannelIcon = (type: string) => {
   const map: Record<string, any> = {
-    'Email': Mail,
-    'Dtalk': Zap,
-    'QyWeiXin': Building2,
-    'Feishu': Bird,
-    'Custom': PlugZap,
-    'WeChatOFAccount': QrCode,
-    'AliyunSMS': Smartphone,
-    'Telegram': Send,
-    'Bark': BellRing,
-    'Ntfy': Megaphone,
-    'Gotify': ShieldCheck,
-    'QyWeiXinApp': Briefcase
+    'Email': MailOutlined,
+    'Dtalk': ThunderboltOutlined,
+    'QyWeiXin': BankOutlined,
+    'Feishu': RocketOutlined,
+    'Custom': ApiOutlined,
+    'WeChatOFAccount': QrcodeOutlined,
+    'AliyunSMS': MobileOutlined,
+    'Telegram': SendOutlined,
+    'Bark': BellOutlined,
+    'Ntfy': NotificationOutlined,
+    'Gotify': SafetyCertificateOutlined,
+    'QyWeiXinApp': AppstoreOutlined
   }
-  return map[type] || Send // Default icon
+  return map[type] || SendOutlined // Default icon
 }
 
 // 计算保存按钮文本
@@ -393,7 +393,7 @@ const saveButtonText = computed(() => {
     <div class="flex flex-col lg:flex-row gap-6 flex-1">
       <div v-if="props.mode !== 'edit'" class="lg:w-2/5 w-full">
         <div
-          class="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#111827] p-2 max-h-[60vh] overflow-y-auto focus:outline-none"
+          class="mt-3 rounded-lg border weak-divider bg-background p-2 max-h-[60vh] overflow-y-auto focus:outline-none"
           tabindex="0"
           @keydown="handleChannelListKeydown"
         >
@@ -403,8 +403,8 @@ const saveButtonText = computed(() => {
             type="button"
             class="group flex h-9 w-full items-center justify-between rounded-md px-2 text-sm mb-1 last:mb-0"
             :class="option.value === channelMode
-              ? 'bg-[#3b82f6] text-white'
-              : 'text-gray-800 dark:text-gray-100 hover:bg-[#f1f5f9] dark:hover:bg-slate-700'"
+              ? 'bg-brand text-white'
+              : 'text-foreground hover:bg-muted'"
             @click="selectChannelMode(option.value, index)"
           >
             <div class="flex items-center gap-2">
@@ -412,7 +412,7 @@ const saveButtonText = computed(() => {
                 <component
                   :is="getChannelIcon(option.value)"
                   class="w-5 h-5"
-                  :class="option.value === channelMode ? 'text-white' : 'text-gray-700 dark:text-gray-300'"
+                  :class="option.value === channelMode ? 'text-white' : 'text-muted-foreground'"
                 />
               </div>
               <span>{{ option.label }}</span>
@@ -441,7 +441,7 @@ const saveButtonText = computed(() => {
             <div class="mb-4">
               <div
                 v-if="props.mode === 'edit'"
-                class="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300"
+                class="flex items-center gap-1.5 text-sm text-foreground"
               >
                 <span class="font-medium">{{ currentChannelConfig?.label || channelMode }}</span>
                 <span
@@ -453,7 +453,7 @@ const saveButtonText = computed(() => {
               </div>
               <div v-else>
                 <div class="flex items-center gap-2">
-                  <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">
+                  <h3 class="text-base font-semibold text-foreground">
                     {{ currentChannelConfig?.label || '请选择通道' }}
                   </h3>
                   <span
@@ -463,7 +463,7 @@ const saveButtonText = computed(() => {
                     群发
                   </span>
                 </div>
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                <p class="mt-1 text-xs text-muted-foreground">
                   根据选择的发信通道配置认证信息和必要参数
                 </p>
               </div>
@@ -471,10 +471,10 @@ const saveButtonText = computed(() => {
 
             <div
               v-if="currentChannelConfig.dynamicRecipient?.support"
-              class="mb-4 p-3 bg-[#1e3a8a] border border-[#1e3a8a] rounded-md"
+              class="mb-4 p-3 bg-brand border border-brand rounded-md"
             >
               <div class="flex items-start gap-2">
-                <Mail class="w-4 h-4 text-white mt-0.5" />
+                <MailOutlined class="text-[16px] text-white mt-0.5" />
                 <div class="flex-1 space-y-1">
                   <p class="text-xs text-white font-medium">
                     支持群发模式 - 可在配置实例时启用"动态接收者"，通过 API 的
@@ -489,7 +489,7 @@ const saveButtonText = computed(() => {
             </div>
 
             <div v-if="currentChannelConfig.inputs && currentChannelConfig.inputs.length > 0" class="mb-8">
-              <h4 class="text-base font-medium mb-4 text-gray-800 dark:text-gray-100">基本配置</h4>
+              <h4 class="text-base font-medium mb-4 text-foreground">基本配置</h4>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div
                   v-for="input in currentChannelConfig.inputs"
@@ -501,7 +501,7 @@ const saveButtonText = computed(() => {
                 >
                   <Label :for="input.col" class="text-sm font-medium">
                     {{ input.subLabel || input.label }}
-                    <span v-if="input.tips" class="text-xs text-gray-500 ml-1">({{ input.tips }})</span>
+                    <span v-if="input.tips" class="text-xs text-muted-foreground ml-1">({{ input.tips }})</span>
                   </Label>
                   <Textarea
                     v-if="input.isTextArea"
@@ -509,7 +509,7 @@ const saveButtonText = computed(() => {
                     v-model="formData[input.col]"
                     :placeholder="input.desc || input.placeholder || input.subLabel || input.label"
                     :class="[
-                      'w-full rounded-md border border-[#d1d5da] bg-white dark:bg-slate-900 placeholder:text-gray-500 focus:border-2 focus:border-[#3b82f6] focus:ring-0 focus-visible:ring-0 transition-transform transition-colors duration-150 focus:scale-[1.01]',
+                      'w-full rounded-md border weak-divider bg-background placeholder:text-muted-foreground focus:border-2 focus:border-brand focus:ring-0 focus-visible:ring-0 transition-transform transition-colors focus:scale-[1.01]',
                       validationState.errors.value[input.col] ? 'border-red-500 focus:border-red-500' : ''
                     ]"
                     @input="() => validationState.clearFieldError(input.col)"
@@ -520,7 +520,7 @@ const saveButtonText = computed(() => {
                     v-model="formData[input.col]"
                     :placeholder="input.desc || input.placeholder || input.subLabel || input.label"
                     :class="[
-                      'w-full rounded-md border border-[#d1d5da] placeholder:text-gray-500 focus:border-2 focus:border-[#3b82f6] focus:ring-0 focus-visible:ring-0 transition-transform transition-colors duration-150 focus:scale-[1.01]',
+                      'w-full rounded-md border weak-divider placeholder:text-muted-foreground focus:border-2 focus:border-brand focus:ring-0 focus-visible:ring-0 transition-transform transition-colors focus:scale-[1.01]',
                       validationState.errors.value[input.col] ? 'border-red-500 focus:border-red-500' : ''
                     ]"
                     @input="() => validationState.clearFieldError(input.col)"
@@ -534,10 +534,10 @@ const saveButtonText = computed(() => {
               <div class="mt-2 ml-4" v-if="currentChannelConfig.tips && currentChannelConfig.tips.text">
                 <TooltipProvider>
                   <Tooltip>
-                    <TooltipTrigger class="text-sm hover:text-gray-700 inline-flex items-center gap-1">
+                    <TooltipTrigger class="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
                       {{ currentChannelConfig.tips.text }}
                       <span
-                        class="cursor-help inline-flex items-center justify-center w-4 h-4 rounded-full border border-gray-300 hover:border-gray-400 text-xs"
+                        class="cursor-help inline-flex items-center justify-center w-4 h-4 rounded-full border weak-divider hover:border-foreground/30 text-xs"
                       >
                         ?
                       </span>
@@ -550,15 +550,15 @@ const saveButtonText = computed(() => {
               </div>
             </div>
           </div>
-          <div v-else class="mt-6 p-6 bg-gray-50 dark:bg-slate-900/40 rounded-lg">
-            <p class="text-gray-500 dark:text-gray-400">请选择一个渠道类型开始配置</p>
+          <div v-else class="mt-6 p-6 bg-muted/40 dark:bg-muted/20 rounded-lg">
+            <p class="text-muted-foreground">请选择一个渠道类型开始配置</p>
           </div>
         </transition>
       </div>
     </div>
 
     <div
-      class="flex justify-end gap-3 mt-8 pt-4 border-t sticky bottom-0 bg-white dark:bg-slate-950"
+      class="flex justify-end gap-3 mt-8 pt-4 border-t weak-divider sticky bottom-0 bg-background"
     >
       <Button variant="outline" class="transition-transform hover:-translate-y-0.5" @click="handleClose">
         取消

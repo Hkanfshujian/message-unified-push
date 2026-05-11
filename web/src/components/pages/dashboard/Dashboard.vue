@@ -2,7 +2,7 @@
 import StatCard from '@/components/pages/dashboard/CardNum.vue'
 import { FileTextOutlined, SendOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons-vue'
 // import { LineChart } from "@/components/ui/chart-line"
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { request } from '@/api/api';
 import { toast } from 'vue-sonner';
@@ -141,46 +141,7 @@ const getChartThemeTokens = () => {
   }
 }
 
-const successRate = computed(() => {
-  const total = Number(state.basicData.today_total_num || 0)
-  const succ = Number(state.basicData.today_succ_num || 0)
-  if (total <= 0) return 0
-  return Number(((succ / total) * 100).toFixed(1))
-})
 
-const failRate = computed(() => {
-  const total = Number(state.basicData.today_total_num || 0)
-  const failed = Number(state.basicData.today_failed_num || 0)
-  if (total <= 0) return 0
-  return Number(((failed / total) * 100).toFixed(1))
-})
-
-const activeChannels = computed(() => {
-  const list = state.channelData.way_cate_data || []
-  return list.filter(item => (item.count_num || 0) > 0).length
-})
-
-const avgDailySend = computed(() => {
-  const list = state.trendData.latest_send_data || []
-  if (!list.length) return 0
-  const total = list.reduce((acc, item) => acc + Number(item.num || 0), 0)
-  return Math.round(total / list.length)
-})
-
-const operationBanner = computed(() => {
-  if (failRate.value >= 5) {
-    return {
-      level: 'warning',
-      title: '投递失败率偏高',
-      text: `当前失败率 ${failRate.value}%，建议排查失败渠道与模板参数。`
-    }
-  }
-  return {
-    level: 'ok',
-    title: '投递状态稳定',
-    text: `当前失败率 ${failRate.value}%，系统整体投递状态良好。`
-  }
-})
 
 const TOKEN_ERROR_CODES = [20001, 20002, 20003, 20004, 20005]
 
@@ -793,42 +754,5 @@ onUnmounted(() => {
     </Card>
   </div>
 
-  <div class="w-full mt-6 grid grid-cols-1 lg:grid-cols-10 gap-4">
-    <Card class="lg:col-span-2 weak-divider shadow-sm">
-      <CardHeader class="pb-2">
-        <CardDescription>今日成功率</CardDescription>
-        <CardTitle class="text-2xl">{{ successRate }}%</CardTitle>
-      </CardHeader>
-      <CardContent class="pt-0 text-xs text-muted-foreground">成功发送 / 今日总发送</CardContent>
-    </Card>
 
-    <Card class="lg:col-span-2 weak-divider shadow-sm">
-      <CardHeader class="pb-2">
-        <CardDescription>今日失败率</CardDescription>
-        <CardTitle class="text-2xl">{{ failRate }}%</CardTitle>
-      </CardHeader>
-      <CardContent class="pt-0 text-xs text-muted-foreground">失败发送 / 今日总发送</CardContent>
-    </Card>
-
-    <Card class="lg:col-span-2 weak-divider shadow-sm">
-      <CardHeader class="pb-2">
-        <CardDescription>活跃渠道数</CardDescription>
-        <CardTitle class="text-2xl">{{ activeChannels }}</CardTitle>
-      </CardHeader>
-      <CardContent class="pt-0 text-xs text-muted-foreground">当前有发送记录的渠道数量</CardContent>
-    </Card>
-
-    <Card
-      class="lg:col-span-4 weak-divider shadow-sm"
-      :class="operationBanner.level === 'warning' ? 'bg-amber-50/70 dark:bg-amber-500/10' : 'bg-blue-50/70 dark:bg-blue-500/10'"
-    >
-      <CardHeader class="pb-2">
-        <CardDescription>运营提示</CardDescription>
-        <CardTitle class="text-lg">{{ operationBanner.title }}</CardTitle>
-      </CardHeader>
-      <CardContent class="pt-0 text-sm text-muted-foreground">
-        {{ operationBanner.text }} 近{{ state.trendDays }}天日均发送 {{ avgDailySend }} 条。
-      </CardContent>
-    </Card>
-  </div>
 </template>

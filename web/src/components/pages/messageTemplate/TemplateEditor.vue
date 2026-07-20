@@ -1,15 +1,11 @@
 <script setup lang="ts">
+import AppFormDrawer from '@/components/ui/AppFormDrawer.vue'
 import { ref, computed, watch, nextTick } from 'vue'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Checkbox } from '@/components/ui/checkbox'
-import { toast } from 'vue-sonner'
-import { request } from '@/api/api'
+import { templatesApi } from '@/api/templates'
+import { notifyError, notifySuccess } from '@/util/uiFeedback'
+import { zhCN } from '@/locales/zh-CN'
+
+const messages = zhCN.templateEditor
 
 interface Placeholder {
   key: string
@@ -134,7 +130,7 @@ const refreshPreview = async () => {
   }
 
   try {
-    const rsp = await request.post('/templates/preview', {
+    const rsp = await templatesApi.preview({
       id: formData.value.id,
       params: previewData.value.params
     })
@@ -232,7 +228,7 @@ const insertPlaceholder = async (type: 'text' | 'html' | 'markdown', key: string
   
   await nextTick()
   
-  const textarea = targetRef.$el || targetRef
+  const textarea = targetRef?.textarea || targetRef?.$el?.querySelector?.('textarea') || targetRef?.$el || targetRef
   const start = textarea.selectionStart
   const end = textarea.selectionEnd
   const text = formData.value[`${type}_template`]
@@ -312,26 +308,26 @@ const validateTemplateIdFormat = (id: string) => {
 // 保存模板
 const saveTemplate = async () => {
   if (!formData.value.name.trim()) {
-    toast.error('请输入模板名称')
+    notifyError('请输入模板名称')
     return
   }
   
   // 验证至少填写一种格式的模板内容
   if (!formData.value.text_template && !formData.value.html_template && !formData.value.markdown_template) {
-    toast.error('至少需要填写一种格式的模板内容')
+    notifyError('至少需要填写一种格式的模板内容')
     return
   }
   
   // 验证占位符 key 不能为空且不能重复
   const emptyKeys = placeholdersList.value.filter(p => p.key.trim() === '')
   if (emptyKeys.length > 0) {
-    toast.error('占位符 key 不能为空')
+    notifyError('占位符 key 不能为空')
     return
   }
   
   if (getDuplicateKeys.value.size > 0) {
     const duplicates = Array.from(getDuplicateKeys.value).join('、')
-    toast.error(`占位符 key 不能重复：${duplicates}`)
+    notifyError(`占位符 key 不能重复：${duplicates}`)
     return
   }
 
@@ -339,7 +335,7 @@ const saveTemplate = async () => {
   if (!props.isEditing) {
     idError.value = validateTemplateIdFormat(formData.value.id || '')
     if (idError.value) {
-      toast.error(idError.value)
+      notifyError(idError.value)
       return
     }
   } else {
@@ -350,17 +346,16 @@ const saveTemplate = async () => {
   formData.value.placeholders = JSON.stringify(placeholdersList.value)
 
   try {
-    const url = props.isEditing ? '/templates/edit' : '/templates/add'
-    const response = await request.post(url, formData.value)
+    const response = await (props.isEditing ? templatesApi.update(formData.value) : templatesApi.create(formData.value))
     if (response.data.code === 200) {
-      toast.success(props.isEditing ? '更新模板成功' : '添加模板成功')
+      notifySuccess(props.isEditing ? '更新模板成功' : '添加模板成功')
       emit('update:open', false)
       emit('saved')
     } else {
-      toast.error(response.data.msg || '操作失败')
+      notifyError(response.data.msg || '操作失败')
     }
   } catch (error: any) {
-    toast.error(error.response?.data?.msg || error.response?.data?.message || '操作失败')
+    notifyError(error.response?.data?.msg || error.response?.data?.message || '操作失败')
   }
 }
 
@@ -377,269 +372,272 @@ watch(() => props.open, (newVal) => {
 </script>
 
 <template>
-  <Dialog :open="open" @update:open="(value) => $emit('update:open', value)">
-    <DialogContent class="w-[min(855px,98vw)] !max-w-[98vw] sm:!max-w-[98vw] max-h-[90vh] overflow-hidden flex flex-col">
-      <DialogHeader class="flex-shrink-0 border-b weak-divider pb-3">
-        <DialogTitle>{{ isEditing ? '编辑模板' : '新建模板' }}</DialogTitle>
-      </DialogHeader>
-      <div class="space-y-4 flex-1 overflow-y-auto pr-2 mt-4">
-        <!-- 基本信息 -->
-        <div class="grid grid-cols-10 gap-4">
-          <div class="col-span-7 space-y-2 template-name-input">
-            <Label for="name">模板名称 *</Label>
-            <Input
-              id="name"
-              :model-value="formData.name"
-              :max-length="50"
-              placeholder="请输入模板名称"
-              @update:model-value="handleNameInput"
-            />
-            <div v-if="nameTooLong" class="error-tip">名称长度不能超过18个字符</div>
+  <AppFormDrawer :model-value="open" :title="isEditing ? messages.editTitle : messages.createTitle" size="min(960px, 96vw)" @update:model-value="(value: boolean) => $emit('update:open', value)">
+    <div class="template-editor-content">
+      <section class="template-editor-card space-y-4">
+        <div class="template-editor-section-head">
+          <div>
+            <h3 class="app-form-section-title">{{ messages.basicInfo }}</h3>
+            <p class="app-form-section-description">{{ messages.basicDescription }}</p>
           </div>
-          <div class="col-span-3 space-y-2">
-            <Label>状态</Label>
-            <Select v-model="formData.status">
-              <SelectTrigger class="w-full">
-                <SelectValue placeholder="全部" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="enabled">启用</SelectItem>
-                  <SelectItem value="disabled">禁用</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-10 gap-4">
+          <div class="md:col-span-7 app-form-field template-name-input">
+            <label for="name" class="app-form-label">{{ messages.templateName }}<span class="text-destructive">{{ messages.required }}</span></label>
+            <el-input id="name" :model-value="formData.name" maxlength="50" :placeholder="messages.namePlaceholder" @input="handleNameInput" />
+            <div v-if="nameTooLong" class="app-form-error">{{ messages.nameTooLong }}</div>
+          </div>
+          <div class="md:col-span-3 app-form-field">
+            <label class="app-form-label">{{ messages.status }}</label>
+            <el-select v-model="formData.status" class="w-full">
+              <el-option :label="messages.enabled" value="enabled" />
+              <el-option :label="messages.disabled" value="disabled" />
+            </el-select>
           </div>
         </div>
 
-        <!-- 模板ID（可选，新增时可编辑，编辑时只读） -->
-        <div class="space-y-2">
-          <Label for="templateId">模板ID（可选）</Label>
-          <Input
-            id="templateId"
-            v-model="formData.id"
-            :readonly="isEditing"
-            placeholder="留空则系统自动生成，例如：TPxxxxxxxxxx"
-          />
-          <div v-if="idError" class="text-xs text-red-500">{{ idError }}</div>
+        <div class="app-form-field">
+          <label for="templateId" class="app-form-label">{{ messages.templateId }}<span class="app-form-optional">{{ messages.optional }}</span></label>
+          <el-input id="templateId" v-model="formData.id" :readonly="isEditing" :placeholder="messages.idPlaceholder" />
+          <div v-if="idError" class="app-form-error">{{ idError }}</div>
         </div>
 
-        <div class="space-y-2">
-          <Label for="description">描述</Label>
-          <Textarea id="description" v-model="formData.description" placeholder="请输入模板描述" />
+        <div class="app-form-field">
+          <label for="description" class="app-form-label">{{ messages.description }}</label>
+          <el-input id="description" v-model="formData.description" type="textarea" :rows="3" :placeholder="messages.descriptionPlaceholder" />
         </div>
+      </section>
 
-        <!-- 占位符配置 -->
-        <div class="space-y-2">
-          <div class="flex justify-between items-center">
-            <Label>占位符配置</Label>
-            <Button size="sm" variant="outline" @click="addPlaceholder">添加占位符</Button>
+      <section class="template-editor-card space-y-3">
+        <div class="template-editor-section-head">
+          <div>
+            <h3 class="app-form-section-title">{{ messages.placeholders }}</h3>
+            <p class="app-form-section-description">{{ messages.placeholdersDescription }}</p>
           </div>
-          <div v-for="(placeholder, index) in placeholdersList" :key="index" class="flex flex-col gap-1">
-            <div class="flex gap-2 items-center">
-              <div class="flex-1 relative">
-                <Input
-                  v-model="placeholder.key"
-                  placeholder="key (如: username)"
-                  :class="{ 'border-red-500 focus-visible:ring-red-500': isDuplicateKey(placeholder.key, index) }"
-                />
-                <p v-if="isDuplicateKey(placeholder.key, index)" class="text-xs text-red-500 mt-1">
-                  该 key 已存在
-                </p>
-              </div>
-              <Input
-                v-model="placeholder.label"
-                placeholder="标签 (如: 用户名)"
-                class="flex-1"
-              />
-              <Input
-                v-model="placeholder.default"
-                placeholder="默认值"
-                class="flex-1"
-              />
-              <Button size="sm" variant="ghost" @click="removePlaceholder(index)">删除</Button>
+          <el-button size="small" plain @click="addPlaceholder">{{ messages.addPlaceholder }}</el-button>
+        </div>
+        <div v-for="(placeholder, index) in placeholdersList" :key="index" class="template-placeholder-row">
+          <div class="min-w-0 flex-1">
+            <el-input v-model="placeholder.key" :placeholder="messages.keyPlaceholder" :class="isDuplicateKey(placeholder.key, index) ? 'is-error' : ''" />
+            <p v-if="isDuplicateKey(placeholder.key, index)" class="app-form-error">{{ messages.duplicateKey }}</p>
+          </div>
+          <el-input v-model="placeholder.label" :placeholder="messages.labelPlaceholder" class="flex-1" />
+          <el-input v-model="placeholder.default" :placeholder="messages.defaultPlaceholder" class="flex-1" />
+          <el-button size="small" type="danger" text @click="removePlaceholder(index)">{{ messages.delete }}</el-button>
+        </div>
+        <p class="template-editor-help">
+          {{ messages.placeholderHelpPrefix }}<code class="template-editor-code" v-text="'{{key}}'"></code>{{ messages.placeholderHelpMiddle }}<code class="template-editor-code" v-text="'{{username}}'"></code>
+        </p>
+
+        <div class="template-editor-subsection">
+          <div class="template-editor-section-head">
+            <div>
+              <h3 class="app-form-section-title">{{ messages.mentionSettings }}</h3>
+              <p class="app-form-section-description">{{ messages.mentionDescription }}</p>
             </div>
           </div>
-          <p class="text-xs text-muted-foreground">
-            在模板中使用 <code v-text="'{{key}}'"></code> 来引用占位符，例如：Hello <code v-text="'{{username}}'"></code>
-          </p>
-        </div>
-
-        <!-- @提醒配置 -->
-        <div class="space-y-2">
-          <Label>@提醒配置 <span class="text-xs text-muted-foreground font-normal">（适用于钉钉、企业微信等）</span></Label>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
-            <div class="flex items-center gap-2 px-3 py-2 border weak-divider rounded-md">
-              <Checkbox 
-                id="is_at_all" 
-                :model-value="formData.is_at_all"
-                @update:model-value="(newVal: boolean | 'indeterminate') => formData.is_at_all = newVal === true"
-              />
-              <Label for="is_at_all" class="cursor-pointer text-sm">@所有人</Label>
+            <div class="template-editor-check-item">
+              <el-checkbox v-model="formData.is_at_all">{{ messages.mentionAll }}</el-checkbox>
             </div>
-            <Input
-              v-model="formData.at_mobiles"
-              placeholder="@手机号（逗号分隔）"
-              class="text-sm"
-            />
-            <Input
-              v-model="formData.at_user_ids"
-              placeholder="@用户ID（逗号分隔）"
-              class="text-sm"
-            />
+            <el-input v-model="formData.at_mobiles" :placeholder="messages.mobilePlaceholder" />
+            <el-input v-model="formData.at_user_ids" :placeholder="messages.userIdPlaceholder" />
           </div>
         </div>
+      </section>
 
-        <!-- 模板内容 -->
-        <div class="space-y-2">
-          <div class="flex items-center justify-between">
-            <Label class="text-base font-semibold">模板内容</Label>
-            <Button 
-              size="sm" 
-              variant="outline" 
-              @click="showPreview = !showPreview; if (showPreview) refreshPreview()"
-            >
-              {{ showPreview ? '隐藏预览' : '显示预览' }}
-            </Button>
+      <section class="template-editor-card space-y-3">
+        <div class="template-editor-section-head">
+          <div>
+            <h3 class="app-form-section-title">{{ messages.content }}</h3>
+            <p class="app-form-section-description">{{ messages.contentDescription }}</p>
           </div>
-          
-          <!-- 占位符参数输入（仅在显示预览时） -->
-          <div v-if="showPreview && validPlaceholders.length > 0" class="p-3 bg-muted rounded-lg space-y-2">
-            <Label class="text-sm font-medium">填写占位符参数（用于预览）</Label>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <div v-for="ph in validPlaceholders" :key="ph.key" class="flex gap-2 items-center">
-                <Label class="text-xs w-24 flex-shrink-0">{{ ph.key }}</Label>
-                <Input
-                  v-model="previewData.params[ph.key]"
-                  :placeholder="ph.default || `请输入 ${ph.key}`"
-                  class="text-sm h-8"
-                  size="sm"
-                />
-              </div>
+          <el-button size="small" plain @click="showPreview = !showPreview; if (showPreview) refreshPreview()">
+            {{ showPreview ? messages.hidePreview : messages.showPreview }}
+          </el-button>
+        </div>
+        <div v-if="showPreview && validPlaceholders.length > 0" class="template-preview-params space-y-3">
+          <label class="app-form-label">{{ messages.fillPlaceholderParameters }}</label>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div v-for="ph in validPlaceholders" :key="ph.key" class="flex gap-2 items-center">
+              <label class="template-preview-key">{{ ph.key }}</label>
+              <el-input v-model="previewData.params[ph.key]" :placeholder="ph.default || `${messages.parameterPlaceholderPrefix}${ph.key}`" size="small" />
             </div>
           </div>
         </div>
-        
-        <Tabs default-value="text" class="w-full">
-          <TabsList class="grid w-full grid-cols-3">
-            <TabsTrigger value="text">Text</TabsTrigger>
-            <TabsTrigger value="html">HTML</TabsTrigger>
-            <TabsTrigger value="markdown">Markdown</TabsTrigger>
-          </TabsList>
-          <TabsContent value="text" class="space-y-2">
-            <div class="flex flex-col gap-1">
-              <Label>纯文本模板</Label>
+      
+      <el-tabs model-value="text" class="template-editor-tabs w-full">
+        <el-tab-pane label="Text" name="text">
+          <div class="template-editor-code-panel space-y-3">
+            <div class="app-form-field">
+              <label class="app-form-label">{{ messages.textTemplate }}</label>
               <div v-if="validPlaceholders.length > 0" class="flex gap-1 overflow-x-auto pb-1 scrollbar-thin">
-                <Button
-                  v-for="ph in validPlaceholders"
-                  :key="ph.key"
-                  size="sm"
-                  variant="outline"
-                  class="h-7 text-xs whitespace-nowrap flex-shrink-0"
-                  @click="insertPlaceholder('text', ph.key)"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                  </svg>
-                  {{ph.key}}
-                </Button>
+                <el-button v-for="ph in validPlaceholders" :key="ph.key" size="small" @click="insertPlaceholder('text', ph.key)">{{ ph.key }}</el-button>
               </div>
             </div>
-            <Textarea
-              ref="textTemplateRef"
-              v-model="formData.text_template"
-              placeholder="请输入纯文本模板内容，可使用 {{key}} 作为占位符"
-              :rows="showPreview ? 10 : 15"
-            />
-            
-            <!-- 预览区 -->
-            <div v-if="showPreview" class="space-y-2">
-              <Label>预览效果</Label>
-              <div class="p-4 border weak-divider rounded-md bg-muted/50">
-                <pre class="whitespace-pre-wrap text-sm">{{ previewData.text || '无内容' }}</pre>
+            <el-input ref="textTemplateRef" v-model="formData.text_template" type="textarea" :placeholder="messages.textPlaceholder" :rows="showPreview ? 10 : 15" />
+            <div v-if="showPreview" class="app-form-field">
+              <label class="app-form-label">{{ messages.preview }}</label>
+              <div class="template-preview-panel">
+                <pre class="whitespace-pre-wrap text-sm">{{ previewData.text || messages.noContent }}</pre>
               </div>
             </div>
-          </TabsContent>
-          <TabsContent value="html" class="space-y-2">
-            <div class="flex flex-col gap-1">
-              <Label>HTML模板</Label>
+          </div>
+        </el-tab-pane>
+        <el-tab-pane label="HTML" name="html">
+          <div class="template-editor-card space-y-3">
+            <div class="app-form-field">
+              <label class="app-form-label">{{ messages.htmlTemplate }}</label>
               <div v-if="validPlaceholders.length > 0" class="flex gap-1 overflow-x-auto pb-1 scrollbar-thin">
-                <Button
-                  v-for="ph in validPlaceholders"
-                  :key="ph.key"
-                  size="sm"
-                  variant="outline"
-                  class="h-7 text-xs whitespace-nowrap flex-shrink-0"
-                  @click="insertPlaceholder('html', ph.key)"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                  </svg>
-                  {{ph.key}}
-                </Button>
+                <el-button v-for="ph in validPlaceholders" :key="ph.key" size="small" @click="insertPlaceholder('html', ph.key)">{{ ph.key }}</el-button>
               </div>
             </div>
-            <Textarea
-              ref="htmlTemplateRef"
-              v-model="formData.html_template"
-              placeholder="请输入HTML模板内容，可使用 {{key}} 作为占位符"
-              :rows="showPreview ? 10 : 15"
-            />
-            
-            <!-- 预览区 -->
-            <div v-if="showPreview" class="space-y-2">
-              <Label>预览效果（基础渲染）</Label>
-              <div class="p-4 border weak-divider rounded-md bg-muted/50">
-                <div v-html="previewData.html || '无内容'"></div>
+            <el-input ref="htmlTemplateRef" v-model="formData.html_template" type="textarea" :placeholder="messages.htmlPlaceholder" :rows="showPreview ? 10 : 15" />
+            <div v-if="showPreview" class="app-form-field">
+              <label class="app-form-label">{{ messages.htmlPreview }}</label>
+              <div class="template-preview-panel">
+                <div v-html="previewData.html || messages.noContent"></div>
               </div>
-              <p class="text-xs text-muted-foreground">
-                💡 HTML 预览仅显示基础结构，实际发送时可能包含邮件样式等
-              </p>
+              <p class="template-editor-help">{{ messages.htmlHelp }}</p>
             </div>
-          </TabsContent>
-          <TabsContent value="markdown" class="space-y-2">
-            <div class="flex flex-col gap-1">
-              <Label>Markdown模板</Label>
+          </div>
+        </el-tab-pane>
+        <el-tab-pane label="Markdown" name="markdown">
+          <div class="template-editor-code-panel space-y-3">
+            <div class="app-form-field">
+              <label class="app-form-label">{{ messages.markdownTemplate }}</label>
               <div v-if="validPlaceholders.length > 0" class="flex gap-1 overflow-x-auto pb-1 scrollbar-thin">
-                <Button
-                  v-for="ph in validPlaceholders"
-                  :key="ph.key"
-                  size="sm"
-                  variant="outline"
-                  class="h-7 text-xs whitespace-nowrap flex-shrink-0"
-                  @click="insertPlaceholder('markdown', ph.key)"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                  </svg>
-                  {{ph.key}}
-                </Button>
+                <el-button v-for="ph in validPlaceholders" :key="ph.key" size="small" @click="insertPlaceholder('markdown', ph.key)">{{ ph.key }}</el-button>
               </div>
             </div>
-            <Textarea
-              ref="markdownTemplateRef"
-              v-model="formData.markdown_template"
-              placeholder="请输入Markdown模板内容，可使用 {{key}} 作为占位符"
-              :rows="showPreview ? 10 : 15"
-            />
-            
-            <!-- 预览区 -->
-            <div v-if="showPreview" class="space-y-2">
-              <Label>预览效果（原始格式）</Label>
-              <div class="p-4 border weak-divider rounded-md bg-muted/50">
-                <pre class="whitespace-pre-wrap text-sm">{{ previewData.markdown || '无内容' }}</pre>
+            <el-input ref="markdownTemplateRef" v-model="formData.markdown_template" type="textarea" :placeholder="messages.markdownPlaceholder" :rows="showPreview ? 10 : 15" />
+            <div v-if="showPreview" class="app-form-field">
+              <label class="app-form-label">{{ messages.markdownPreview }}</label>
+              <div class="template-preview-panel">
+                <pre class="whitespace-pre-wrap text-sm">{{ previewData.markdown || messages.noContent }}</pre>
               </div>
-              <p class="text-xs text-muted-foreground">
-                💡 Markdown 在发送时会被渲染为对应格式（钉钉、企业微信等平台支持）
-              </p>
+              <p class="template-editor-help">{{ messages.markdownHelp }}</p>
             </div>
-          </TabsContent>
-        </Tabs>
-      </div>
-      <DialogFooter class="flex-shrink-0 border-t weak-divider pt-3">
-        <Button variant="outline" @click="$emit('update:open', false)">取消</Button>
-        <Button @click="saveTemplate">保存</Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
+          </div>
+        </el-tab-pane>
+        </el-tabs>
+      </section>
+    </div>
+    <template #footer>
+      <span class="template-editor-footer-note">{{ messages.footerHelp }}</span>
+      <el-button @click="$emit('update:open', false)">{{ messages.cancel }}</el-button>
+      <el-button type="primary" @click="saveTemplate">{{ messages.save }}</el-button>
+    </template>
+  </AppFormDrawer>
 </template>
+
+<style scoped>
+.template-editor-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.template-editor-footer-note { margin-right: auto; color: var(--admin-text-muted); font-size: 11px; }
+
+.template-editor-card {
+  border: 1px solid var(--glass-inset-border);
+  border-radius: var(--admin-radius-lg);
+  background: var(--glass-panel-bg);
+  box-shadow: var(--glass-shadow-inset);
+  padding: 16px;
+}
+
+.template-editor-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.template-placeholder-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.template-editor-check-item,
+.template-preview-params,
+.template-preview-panel {
+  border: 1px solid var(--glass-inset-border);
+  border-radius: var(--admin-radius-lg);
+  background: var(--glass-inset-bg);
+  box-shadow: var(--glass-shadow-inset);
+}
+
+.template-editor-check-item {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  padding: 0 12px;
+}
+
+.template-preview-params,
+.template-preview-panel {
+  padding: 12px;
+}
+
+.template-preview-key {
+  width: 96px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--admin-text-muted);
+}
+
+.template-editor-help {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--admin-text-muted);
+}
+
+.template-editor-code {
+  border-radius: 6px;
+  background: var(--glass-active-bg);
+  padding: 1px 5px;
+  color: var(--foreground);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.app-form-optional {
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--admin-text-muted);
+}
+
+.template-editor-tabs :deep(.el-tabs__header) {
+  margin-bottom: 12px;
+}
+
+.template-editor-tabs :deep(.el-tabs__nav-wrap::after) {
+  background: var(--glass-inset-border);
+}
+
+.template-editor-tabs :deep(.el-tabs__item) {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .template-editor-card {
+    padding: 14px;
+  }
+
+  .template-editor-section-head,
+  .template-placeholder-row {
+    grid-template-columns: 1fr;
+  }
+
+  .template-editor-section-head {
+    flex-direction: column;
+  }
+}
+</style>

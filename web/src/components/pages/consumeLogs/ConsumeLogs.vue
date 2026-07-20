@@ -1,18 +1,24 @@
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted, nextTick } from 'vue'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import EmptyTableState from '@/components/ui/EmptyTableState.vue'
-import Pagination from '@/components/ui/Pagination.vue'
-import DateTimePicker from '@/components/ui/DateTimePicker.vue'
-import { request } from '@/api/api'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { Download, Refresh, Search } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
-// @ts-ignore
+import AppDateTimeRange from '@/components/ui/AppDateTimeRange.vue'
+import AppDetailDrawer from '@/components/ui/AppDetailDrawer.vue'
+import AppEmptyState from '@/components/ui/AppEmptyState.vue'
+import AppPagination from '@/components/ui/AppPagination.vue'
+import AppRowActions from '@/components/ui/AppRowActions.vue'
+import AppStatusTag from '@/components/ui/AppStatusTag.vue'
+import AppTable, { type AppTableColumn } from '@/components/ui/AppTable.vue'
+import AppTableToolbar from '@/components/ui/table-toolbar/AppTableToolbar.vue'
+import AppTruncate from '@/components/ui/AppTruncate.vue'
+import { consumeLogsApi } from '@/api/logs'
 import { getPageSize } from '@/util/pageUtils'
+import { createTableToolbarState, getVisibleToolbarColumns } from '@/components/ui/table-toolbar/tableToolbar'
+import type { TableToolbarColumn } from '@/components/ui/table-toolbar/types'
+import { downloadBlob, notifyError, notifySuccess } from '@/util/uiFeedback'
+import { zhCN } from '@/locales/zh-CN'
+
+const messages = zhCN.consumeLogs
 
 interface ConsumeLogItem {
   id: string
@@ -26,43 +32,71 @@ interface ConsumeLogItem {
   created_on: string
 }
 
-let state = reactive({
-  tableData: [] as ConsumeLogItem[],
-  total: 0,
-  currPage: 1,
-  pageSize: getPageSize(),
-  search: '',
-})
+interface ConsumeStats {
+  total_consume: number
+  total_matched: number
+  total_sent: number
+  total_failed: number
+}
+
 const route = useRoute()
 const router = useRouter()
 
-// 过滤条件
-const selectedMatched = ref('all')
-const selectedSendStatus = ref('all')
-
-// 获取当天时间范围
 const getTodayRange = () => {
   const now = new Date()
   const year = now.getFullYear()
   const month = String(now.getMonth() + 1).padStart(2, '0')
   const day = String(now.getDate()).padStart(2, '0')
-  return {
-    start: `${year}-${month}-${day}T00:00`,
-    end: `${year}-${month}-${day}T23:59`
-  }
+  return [`${year}-${month}-${day}T00:00`, `${year}-${month}-${day}T23:59`] as [string, string]
 }
 
-// 时间范围过滤 - 默认当天
-const todayRange = getTodayRange()
-const startTime = ref(todayRange.start)
-const endTime = ref(todayRange.end)
+const state = reactive({
+  tableData: [] as ConsumeLogItem[],
+  total: 0,
+  currPage: 1,
+  pageSize: getPageSize(),
+  search: '',
+  loading: false,
+  statsLoading: false
+})
 
-// Sheet 状态
-const isSheetOpen = ref(false)
+const selectedMatched = ref('all')
+const selectedSendStatus = ref('all')
+const timeRange = ref<[string, string] | []>(getTodayRange())
+const isDrawerOpen = ref(false)
+const detailLoading = ref(false)
 const selectedLog = ref<ConsumeLogItem | null>(null)
+const stats = ref<ConsumeStats>({ total_consume: 0, total_matched: 0, total_sent: 0, total_failed: 0 })
 
-// 总页数
-const totalPages = computed(() => Math.ceil(state.total / state.pageSize))
+const columns: AppTableColumn[] = [
+  { prop: 'index', label: '序号', width: 80, align: 'center' },
+  { prop: 'id', label: 'ID', minWidth: 100 },
+  { prop: 'subscription_name', label: '订阅名称', minWidth: 180 },
+  { prop: 'raw_message', label: '原始消息', minWidth: 300 },
+  { prop: 'matched', label: '匹配状态', width: 110, align: 'center' },
+  { prop: 'send_status', label: '发送状态', width: 120, align: 'center' },
+  { prop: 'created_on', label: '消费时间', minWidth: 170 },
+  { prop: 'actions', label: '操作', width: 90, align: 'center', fixed: 'right' }
+]
+
+const toolbarColumns: TableToolbarColumn[] = columns.map(column => ({
+  key: column.prop || column.label,
+  label: column.label,
+  required: column.prop === 'index' || column.prop === 'actions'
+}))
+
+const tableToolbar = reactive(createTableToolbarState(toolbarColumns))
+const visibleColumns = computed(() => getVisibleToolbarColumns(columns, tableToolbar.visibleColumns))
+
+const refreshTable = async () => {
+  if (tableToolbar.refreshing) return
+  tableToolbar.refreshing = true
+  try {
+    await queryListData()
+  } finally {
+    tableToolbar.refreshing = false
+  }
+}
 
 const parsePositiveNumber = (value: unknown, fallback: number) => {
   const n = Number(value)
@@ -70,17 +104,54 @@ const parsePositiveNumber = (value: unknown, fallback: number) => {
   return Math.floor(n)
 }
 
+const matchedLabelMap = { 1: '已匹配', 0: '未匹配' }
+const sendStatusLabelMap = { 0: '未发送', 1: '发送成功', 2: '发送失败' }
+
+const formatExtractedValues = (values: string) => {
+  try {
+    const parsed = JSON.parse(values)
+    return JSON.stringify(parsed, null, 2)
+  } catch {
+    return values || '-'
+  }
+}
+
+const extractedEntries = computed(() => {
+  if (!selectedLog.value?.extracted_values) return [] as Array<[string, unknown]>
+  try {
+    const parsed = JSON.parse(selectedLog.value.extracted_values)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return []
+    return Object.entries(parsed)
+  } catch {
+    return []
+  }
+})
+
+const openLogDrawer = async (item: ConsumeLogItem) => {
+  selectedLog.value = item
+  isDrawerOpen.value = true
+  detailLoading.value = true
+  try {
+    const rsp = await consumeLogsApi.detail(item.id)
+    if (rsp?.data?.code === 200 && rsp.data.data) selectedLog.value = { ...item, ...rsp.data.data }
+  } catch (error) {
+  } finally {
+    detailLoading.value = false
+  }
+}
+
 const buildRouteQuery = () => {
   const nextQuery: Record<string, string> = {
     page: String(state.currPage),
-    page_size: String(state.pageSize),
+    page_size: String(state.pageSize)
   }
   const name = state.search.trim()
   if (name) nextQuery.subscription_name = name
-  if (selectedMatched.value && selectedMatched.value !== 'all') nextQuery.matched = selectedMatched.value
-  if (selectedSendStatus.value && selectedSendStatus.value !== 'all') nextQuery.send_status = selectedSendStatus.value
-  if (startTime.value) nextQuery.start_time = startTime.value
-  if (endTime.value) nextQuery.end_time = endTime.value
+  if (selectedMatched.value !== 'all') nextQuery.matched = selectedMatched.value
+  if (selectedSendStatus.value !== 'all') nextQuery.send_status = selectedSendStatus.value
+  const [startTime, endTime] = timeRange.value
+  if (startTime) nextQuery.start_time = startTime
+  if (endTime) nextQuery.end_time = endTime
   return nextQuery
 }
 
@@ -88,135 +159,97 @@ const syncRouteQuery = async () => {
   await router.replace({ path: route.path, query: buildRouteQuery() })
 }
 
-// 获取匹配状态文本
-const getMatchedText = (matched: number) => {
-  return matched === 1 ? '已匹配' : '未匹配'
-}
-
-// 获取匹配状态样式
-const getMatchedClass = (matched: number) => {
-  return matched === 1
-    ? 'bg-green-100 text-green-800 border-green-200'
-    : 'bg-muted text-muted-foreground border-[var(--line-weak)]'
-}
-
-// 获取发送状态文本
-const getSendStatusText = (status: number) => {
-  const statusMap: Record<number, string> = {
-    0: '未发送',
-    1: '发送成功',
-    2: '发送失败'
+const buildParams = () => {
+  const params: Record<string, unknown> = {
+    page: state.currPage,
+    page_size: state.pageSize
   }
-  return statusMap[status] || '未知'
+  if (state.search.trim()) params.subscription_name = state.search.trim()
+  if (selectedMatched.value !== 'all') params.matched = selectedMatched.value
+  if (selectedSendStatus.value !== 'all') params.send_status = selectedSendStatus.value
+  const [startTime, endTime] = timeRange.value
+  if (startTime) params.start_time = startTime
+  if (endTime) params.end_time = endTime
+  return params
 }
 
-// 获取发送状态样式
-const getSendStatusClass = (status: number) => {
-  if (status === 1) return 'bg-green-100 text-green-800 border-green-200'
-  if (status === 2) return 'bg-red-100 text-red-700 border-red-200'
-  return 'bg-muted text-muted-foreground border-[var(--line-weak)]'
-}
-
-// 打开日志详情
-const openLogSheet = (item: ConsumeLogItem) => {
-  selectedLog.value = item
-  isSheetOpen.value = true
-}
-
-// 查询数据
-const queryListData = async (page: number, size: number, subscriptionName = '', matched = '', sendStatus = '') => {
+const loadStats = async () => {
+  state.statsLoading = true
   try {
-    await syncRouteQuery()
-    let params: any = { page, page_size: size }
-    
-    if (subscriptionName) params.subscription_name = subscriptionName
-    if (matched && matched !== 'all') params.matched = matched
-    if (sendStatus && sendStatus !== 'all') params.send_status = sendStatus
-    
-    // 添加时间范围参数
-    if (startTime.value) {
-      params.start_time = startTime.value
+    const rsp = await consumeLogsApi.stats()
+    if (rsp?.data?.code === 200) {
+      stats.value = {
+        total_consume: Number(rsp.data.data?.total_consume || 0),
+        total_matched: Number(rsp.data.data?.total_matched || 0),
+        total_sent: Number(rsp.data.data?.total_sent || 0),
+        total_failed: Number(rsp.data.data?.total_failed || 0)
+      }
     }
-    if (endTime.value) {
-      params.end_time = endTime.value
-    }
+  } catch (error) {
+    notifyError('获取消费统计失败')
+  } finally {
+    state.statsLoading = false
+  }
+}
 
-    const res = await request.get('/consume-logs/list', { params })
-    
-    state.tableData = []
-    await nextTick()
-    
+const queryListData = async (shouldSyncRoute = true) => {
+  if (shouldSyncRoute) await syncRouteQuery()
+  state.loading = true
+  try {
+    const res = await consumeLogsApi.list(buildParams())
     if (res.data.code === 200) {
       state.tableData = res.data.data.list || []
       state.total = res.data.data.total || 0
-    } else {
-      state.tableData = []
-      state.total = 0
+      return
     }
-  } catch (error) {
-    // 静默处理错误，显示空列表
     state.tableData = []
     state.total = 0
+    notifyError(res.data.msg || '获取消费日志失败')
+  } catch (error) {
+    state.tableData = []
+    state.total = 0
+    notifyError('获取消费日志时发生错误')
+  } finally {
+    state.loading = false
   }
 }
 
-const queryListDataWithStatus = async () => {
-  await queryListData(state.currPage, state.pageSize, state.search, selectedMatched.value, selectedSendStatus.value)
-}
-
-// 分页
-const changePage = async (page: number) => {
-  if (page >= 1 && page <= totalPages.value) {
-    state.currPage = page
-    await queryListDataWithStatus()
-  }
-}
-
-const handlePageSizeChange = async (size: number) => {
-  if (size <= 0) return
-  state.pageSize = size
-  state.currPage = 1
-  await queryListDataWithStatus()
-}
-
-// 过滤
 const filterFunc = async () => {
   state.currPage = 1
-  await queryListDataWithStatus()
+  await queryListData()
 }
 
-const filterByMatched = async (value: any) => {
-  if (value) {
-    selectedMatched.value = String(value)
-    state.currPage = 1
-    await queryListDataWithStatus()
-  }
-}
-
-const filterBySendStatus = async (value: any) => {
-  if (value) {
-    selectedSendStatus.value = String(value)
-    state.currPage = 1
-    await queryListDataWithStatus()
-  }
-}
-
-// 清除时间过滤 - 恢复当天
-const clearTimeFilter = async () => {
-  const today = getTodayRange()
-  startTime.value = today.start
-  endTime.value = today.end
+const filterByMatched = async (value: string) => {
+  selectedMatched.value = value
   state.currPage = 1
-  await filterFunc()
+  await queryListData()
 }
 
-// 格式化提取的字段
-const formatExtractedValues = (values: string) => {
+const filterBySendStatus = async (value: string) => {
+  selectedSendStatus.value = value
+  state.currPage = 1
+  await queryListData()
+}
+
+const handlePaginationChange = async ({ page, pageSize }: { page: number; pageSize: number }) => {
+  state.currPage = page
+  state.pageSize = pageSize
+  await queryListData()
+}
+
+const clearTimeFilter = async () => {
+  timeRange.value = getTodayRange()
+  state.currPage = 1
+  await queryListData()
+}
+
+const handleExport = async () => {
   try {
-    const parsed = JSON.parse(values)
-    return JSON.stringify(parsed, null, 2)
-  } catch {
-    return values
+    const rsp = await consumeLogsApi.export(buildParams())
+    downloadBlob(rsp.data, `consume-logs-${new Date().toISOString().slice(0, 10)}.csv`)
+    notifySuccess('消费日志导出成功')
+  } catch (error) {
+    notifyError('消费日志导出失败')
   }
 }
 
@@ -226,202 +259,179 @@ onMounted(async () => {
   selectedSendStatus.value = route.query.send_status?.toString() || 'all'
   state.currPage = parsePositiveNumber(route.query.page, 1)
   state.pageSize = parsePositiveNumber(route.query.page_size, state.pageSize)
-  startTime.value = route.query.start_time?.toString() || startTime.value
-  endTime.value = route.query.end_time?.toString() || endTime.value
-  await queryListDataWithStatus()
+  const startTime = route.query.start_time?.toString()
+  const endTime = route.query.end_time?.toString()
+  if (startTime || endTime) timeRange.value = [startTime || '', endTime || '']
+  await Promise.all([queryListData(), loadStats()])
 })
 </script>
 
 <template>
-  <div class="space-y-2">
-    <div class="toolbar">
-      <div class="search-group" style="flex-wrap: wrap; gap: 8px;">
-        <Input
-          v-model="state.search"
-          placeholder="搜索订阅名称..."
-          style="width: 180px;"
-          @keyup.enter="filterFunc"
-        />
-        <Select :model-value="selectedMatched" style="width: 100px;" @update:model-value="filterByMatched">
-          <SelectTrigger style="height: 36px;">
-            <SelectValue placeholder="匹配状态" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value="all">全部</SelectItem>
-              <SelectItem value="1">已匹配</SelectItem>
-              <SelectItem value="0">未匹配</SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <Select :model-value="selectedSendStatus" style="width: 100px;" @update:model-value="filterBySendStatus">
-          <SelectTrigger style="height: 36px;">
-            <SelectValue placeholder="发送状态" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value="all">全部</SelectItem>
-              <SelectItem value="1">发送成功</SelectItem>
-              <SelectItem value="2">发送失败</SelectItem>
-              <SelectItem value="0">未发送</SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <!-- 时间范围过滤 -->
-        <div class="flex items-center gap-1">
-          <DateTimePicker
-            v-model="startTime"
-            placeholder="开始时间"
-            style="width: 180px;"
-            @change="filterFunc"
-          />
-          <span class="text-sm text-muted-foreground px-1">至</span>
-          <DateTimePicker
-            v-model="endTime"
-            placeholder="结束时间"
-            style="width: 180px;"
-            @change="filterFunc"
-          />
-          <Button 
-            v-if="startTime || endTime" 
-            size="sm" 
-            variant="ghost" 
-            @click="clearTimeFilter"
-          >
-            清除
-          </Button>
+  <div class="space-y-4">
+    <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
+      <el-card v-loading="state.statsLoading" shadow="never"><el-statistic :title="messages.totalConsumed" :value="stats.total_consume" /></el-card>
+      <el-card v-loading="state.statsLoading" shadow="never"><el-statistic :title="messages.matched" :value="stats.total_matched" /></el-card>
+      <el-card v-loading="state.statsLoading" shadow="never"><el-statistic :title="messages.sent" :value="stats.total_sent" /></el-card>
+      <el-card v-loading="state.statsLoading" shadow="never"><el-statistic :title="messages.failed" :value="stats.total_failed" /></el-card>
+    </div>
+
+    <el-card shadow="never">
+      <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div class="flex flex-1 flex-col gap-3 lg:flex-row lg:items-center">
+          <el-input v-model="state.search" class="lg:max-w-[220px]" clearable :placeholder="messages.searchPlaceholder" @keyup.enter="filterFunc" @clear="filterFunc">
+            <template #prefix><el-icon><Search /></el-icon></template>
+          </el-input>
+          <el-select v-model="selectedMatched" class="lg:max-w-[140px]" @change="filterByMatched">
+            <el-option :label="messages.allMatches" value="all" />
+            <el-option :label="messages.matched" value="1" />
+            <el-option :label="messages.unmatched" value="0" />
+          </el-select>
+          <el-select v-model="selectedSendStatus" class="lg:max-w-[150px]" @change="filterBySendStatus">
+            <el-option :label="messages.allSendStatuses" value="all" />
+            <el-option :label="messages.sent" value="1" />
+            <el-option :label="messages.failed" value="2" />
+            <el-option :label="messages.notSent" value="0" />
+          </el-select>
+          <AppDateTimeRange v-model="timeRange" class="lg:max-w-[360px]" @change="filterFunc" />
+          <el-button @click="clearTimeFilter">{{ messages.resetTime }}</el-button>
+          <el-button :icon="Search" @click="filterFunc">{{ messages.search }}</el-button>
+          <el-button :icon="Refresh" @click="refreshTable">{{ messages.refresh }}</el-button>
         </div>
-        <Button variant="outline" @click="filterFunc">查询</Button>
+        <el-button :icon="Download" @click="handleExport">{{ messages.export }}</el-button>
       </div>
-    </div>
+    </el-card>
 
-    <div class="rounded border weak-divider overflow-x-auto">
-      <Table class="data-table border-collapse">
-        <TableHeader>
-          <TableRow>
-            <TableHead class="w-[80px] text-center">序号</TableHead>
-            <TableHead class="text-center">ID</TableHead>
-            <TableHead class="text-center">订阅名称</TableHead>
-            <TableHead class="w-[150px] text-center">原始消息</TableHead>
-            <TableHead class="w-[100px] text-center">匹配状态</TableHead>
-            <TableHead class="w-[100px] text-center">发送状态</TableHead>
-            <TableHead class="w-[150px] text-center">消费时间</TableHead>
-            <TableHead class="w-[120px] text-center">操作</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow v-for="(item, index) in state.tableData" :key="item.id">
-            <TableCell class="font-medium">{{ (state.currPage - 1) * state.pageSize + index + 1 }}</TableCell>
-            <TableCell class="font-mono text-sm">{{ item.id }}</TableCell>
-            <TableCell>{{ item.subscription_name }}</TableCell>
-            <TableCell>
-              <div class="max-w-[300px] truncate font-mono text-sm" :title="item.raw_message">
-                {{ item.raw_message }}
-              </div>
-            </TableCell>
-            <TableCell>
-              <Badge variant="outline" class="text-xs font-medium" :class="getMatchedClass(item.matched)">
-                {{ getMatchedText(item.matched) }}
-              </Badge>
-            </TableCell>
-            <TableCell>
-              <Badge variant="outline" class="text-xs font-medium" :class="getSendStatusClass(item.send_status)">
-                {{ getSendStatusText(item.send_status) }}
-              </Badge>
-            </TableCell>
-            <TableCell class="text-sm text-muted-foreground">
-              {{ item.created_on }}
-            </TableCell>
-            <TableCell class="text-right whitespace-nowrap">
-              <Button
-                variant="outline"
-                size="sm"
-                class="min-w-[76px]"
-                @click="openLogSheet(item)"
-              >
-                查看详情
-              </Button>
-            </TableCell>
-          </TableRow>
-          <TableRow v-if="state.tableData.length === 0">
-            <TableCell :colspan="8">
-              <EmptyTableState title="暂无消费日志" description="当前没有可展示的消费日志记录" />
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-    </div>
+    <el-card shadow="never" body-class="!p-0" :class="tableToolbar.focused ? 'app-table-focused-card' : ''">
+      <AppTableToolbar
+        :title="messages.title"
+        :columns="toolbarColumns"
+        v-model:visible-columns="tableToolbar.visibleColumns"
+        v-model:focused="tableToolbar.focused"
+        :refreshing="tableToolbar.refreshing || state.loading"
+        @refresh="refreshTable"
+      >
+        <template #summary>
+          <span class="text-xs text-muted-foreground">{{ messages.totalPrefix }}{{ state.total }}{{ messages.itemUnit }}</span>
+        </template>
+      </AppTableToolbar>
+      <AppTable :data="state.tableData as unknown as Record<string, unknown>[]" :columns="visibleColumns" :loading="state.loading" :empty-text="messages.empty">
+        <template #index="{ index }">{{ (state.currPage - 1) * state.pageSize + index + 1 }}</template>
+        <template #id="{ row }"><AppTruncate :text="String(row.id || '-')" class="font-mono text-sm" /></template>
+        <template #subscription_name="{ row }">{{ row.subscription_name || '-' }}</template>
+        <template #raw_message="{ row }"><AppTruncate :text="String(row.raw_message || '-')" :title="messages.rawMessage" width="760px" /></template>
+        <template #matched="{ row }">
+          <AppStatusTag :status="row.matched" :label-map="matchedLabelMap" :success-values="[1]" :warning-values="[0]" />
+        </template>
+        <template #send_status="{ row }">
+          <AppStatusTag :status="row.send_status" :label-map="sendStatusLabelMap" :success-values="[1]" :danger-values="[2]" :warning-values="[0]" />
+        </template>
+        <template #created_on="{ row }"><span class="text-sm text-muted-foreground">{{ row.created_on || '-' }}</span></template>
+        <template #actions="{ row }">
+          <AppRowActions :actions="[
+            { key: 'view', label: messages.viewDetails, kind: 'view', onClick: () => openLogDrawer(row as unknown as ConsumeLogItem) }
+          ]" />
+        </template>
+        <template #empty>
+          <AppEmptyState :description="messages.empty" />
+        </template>
+      </AppTable>
+    </el-card>
 
-    <div class="pagination">
-      <Pagination
-        :current-page="state.currPage"
-        :total-pages="totalPages"
-        :page-size="state.pageSize"
-        :total="state.total"
-        @change-page="changePage"
-        @change-page-size="handlePageSizeChange"
-      />
-    </div>
+    <AppPagination v-model:current-page="state.currPage" v-model:page-size="state.pageSize" :total="state.total" @change="handlePaginationChange" />
 
-    <!-- 日志详情 Sheet -->
-    <Sheet v-model:open="isSheetOpen">
-      <SheetContent class="sm:max-w-xl">
-        <SheetHeader>
-          <SheetTitle>消费日志详情</SheetTitle>
-        </SheetHeader>
-        <div v-if="selectedLog" class="mt-6 space-y-4">
-          <div>
-            <h3 class="text-sm font-semibold mb-2">基本信息</h3>
-            <div class="space-y-2 text-sm">
-              <div class="flex justify-between">
-                <span class="text-muted-foreground">日志 ID:</span>
-                <span class="font-mono">{{ selectedLog.id }}</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-muted-foreground">订阅名称:</span>
-                <span>{{ selectedLog.subscription_name }}</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-muted-foreground">匹配状态:</span>
-                <Badge variant="outline" class="text-xs font-medium" :class="getMatchedClass(selectedLog.matched)">
-                  {{ getMatchedText(selectedLog.matched) }}
-                </Badge>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-muted-foreground">发送状态:</span>
-                <Badge variant="outline" class="text-xs font-medium" :class="getSendStatusClass(selectedLog.send_status)">
-                  {{ getSendStatusText(selectedLog.send_status) }}
-                </Badge>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-muted-foreground">消费时间:</span>
-                <span>{{ selectedLog.created_on }}</span>
-              </div>
+    <AppDetailDrawer v-model="isDrawerOpen" :title="messages.detailTitle" size="680px">
+      <div v-if="selectedLog" v-loading="detailLoading" :element-loading-text="messages.detailLoading" class="consume-log-details">
+        <section class="consume-log-identity">
+          <div class="consume-log-mark">{{ messages.mark }}</div>
+          <div><span>{{ messages.title }}</span><h3>{{ selectedLog.subscription_name || messages.unnamedSubscription }}</h3><code>{{ selectedLog.id }}</code><p>{{ messages.detailDescription }}</p></div>
+          <AppStatusTag :status="selectedLog.send_status" :label-map="sendStatusLabelMap" :success-values="[1]" :danger-values="[2]" :warning-values="[0]" />
+        </section>
+        <section class="consume-log-detail-section">
+          <h3 class="consume-log-detail-title">{{ messages.summary }}</h3>
+          <el-descriptions :column="1" border>
+            <el-descriptions-item :label="messages.logId">{{ selectedLog.id }}</el-descriptions-item>
+            <el-descriptions-item :label="messages.subscriptionName">{{ selectedLog.subscription_name || '-' }}</el-descriptions-item>
+            <el-descriptions-item :label="messages.matchStatus">
+              <AppStatusTag :status="selectedLog.matched" :label-map="matchedLabelMap" :success-values="[1]" :warning-values="[0]" />
+            </el-descriptions-item>
+            <el-descriptions-item :label="messages.sendStatus">
+              <AppStatusTag :status="selectedLog.send_status" :label-map="sendStatusLabelMap" :success-values="[1]" :danger-values="[2]" :warning-values="[0]" />
+            </el-descriptions-item>
+            <el-descriptions-item :label="messages.consumedAt">{{ selectedLog.created_on }}</el-descriptions-item>
+          </el-descriptions>
+        </section>
+        <section class="consume-log-detail-section">
+          <h3 class="consume-log-detail-title">{{ messages.rawMessage }}</h3>
+          <pre class="consume-log-detail-content">{{ selectedLog.raw_message }}</pre>
+        </section>
+        <section v-if="selectedLog.extracted_values" class="consume-log-detail-section">
+          <h3 class="consume-log-detail-title">{{ messages.extractedFields }}</h3>
+          <div v-if="extractedEntries.length" class="consume-log-fields">
+            <div v-for="([key, value], idx) in extractedEntries" :key="`${key}-${idx}`" class="consume-log-field">
+              <el-tag effect="plain">{{ key }}</el-tag>
+              <span class="break-all font-mono">{{ value }}</span>
             </div>
           </div>
-
-          <div>
-            <h3 class="text-sm font-semibold mb-2">原始消息</h3>
-            <div class="p-3 bg-muted rounded-md">
-              <pre class="text-sm whitespace-pre-wrap font-mono">{{ selectedLog.raw_message }}</pre>
-            </div>
-          </div>
-
-          <div v-if="selectedLog.matched === 1 && selectedLog.extracted_values">
-            <h3 class="text-sm font-semibold mb-2">提取的字段</h3>
-            <div class="p-3 bg-muted rounded-md">
-              <pre class="text-sm whitespace-pre-wrap font-mono">{{ formatExtractedValues(selectedLog.extracted_values) }}</pre>
-            </div>
-          </div>
-
-          <div v-if="selectedLog.send_status === 2 && selectedLog.send_error">
-            <h3 class="text-sm font-semibold mb-2">发送错误</h3>
-            <div class="p-3 bg-red-50 text-red-800 rounded-md">
-              <pre class="text-sm whitespace-pre-wrap">{{ selectedLog.send_error }}</pre>
-            </div>
-          </div>
-        </div>
-      </SheetContent>
-    </Sheet>
+          <pre v-else class="consume-log-detail-content">{{ formatExtractedValues(selectedLog.extracted_values) }}</pre>
+        </section>
+        <section v-if="selectedLog.send_status === 2 && selectedLog.send_error" class="consume-log-detail-section">
+          <h3 class="consume-log-detail-title">{{ messages.sendError }}</h3>
+          <pre class="consume-log-detail-content consume-log-error-detail">{{ selectedLog.send_error }}</pre>
+        </section>
+      </div>
+    </AppDetailDrawer>
   </div>
 </template>
+
+<style scoped>
+.consume-log-details {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.consume-log-detail-section {
+  border: 1px solid var(--glass-inset-border);
+  border-radius: var(--admin-radius-lg);
+  background: var(--glass-inset-bg);
+  padding: 14px;
+}
+
+.consume-log-detail-title {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.consume-log-detail-content {
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.consume-log-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.consume-log-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border-top: 1px solid var(--glass-inset-border);
+  padding-top: 8px;
+  font-size: 13px;
+}
+
+.consume-log-field:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+@media (max-width: 760px) { .consume-log-identity { grid-template-columns: 38px minmax(0, 1fr); } .consume-log-identity > :deep(.el-tag) { grid-column: 1 / -1; width: fit-content; } }
+</style>

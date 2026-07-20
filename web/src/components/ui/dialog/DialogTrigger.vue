@@ -1,15 +1,12 @@
 <script setup lang="ts">
-import type { DialogTriggerProps } from "reka-ui"
-import { DialogTrigger } from "reka-ui"
-
-const props = defineProps<DialogTriggerProps>()
+defineProps<{ asChild?: boolean }>()
 </script>
 
 <template>
-  <DialogTrigger
+  <button
     data-slot="dialog-trigger"
-    v-bind="props"
+    type="button"
   >
     <slot />
-  </DialogTrigger>
+  </button>
 </template>

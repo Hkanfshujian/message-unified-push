@@ -1,11 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { request } from '@/api/api'
-import { toast } from 'vue-sonner'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Switch } from '@/components/ui/switch'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { settingsApi } from '@/api/settings'
+import { notifyError, notifySuccess, notifyWarning } from '@/util/uiFeedback'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -27,15 +23,13 @@ const enabledBool = computed({
 const loadConfig = async () => {
   loading.value = true
   try {
-    const rsp = await request.get('/settings/getsetting', {
-      params: { section: state.section }
-    })
+    const rsp = await settingsApi.get(state.section)
     const data = rsp?.data?.data || {}
     state.enabled = data.enabled || 'false'
     state.interval_seconds = data.interval_seconds || '300'
     state.log_level = (data.log_level || 'info').toLowerCase()
   } catch (error) {
-    toast.error('获取消息队列状态策略失败')
+    notifyError('获取消息队列状态策略失败')
   } finally {
     loading.value = false
   }
@@ -43,32 +37,29 @@ const loadConfig = async () => {
 
 const saveConfig = async () => {
   if (!/^\d+$/.test(state.interval_seconds)) {
-    toast.warning('自动更新频率必须是整数秒')
+    notifyWarning('自动更新频率必须是整数秒')
     return
   }
   const seconds = Number(state.interval_seconds)
   if (seconds < 10 || seconds > 86400) {
-    toast.warning('自动更新频率范围为 10 ~ 86400 秒')
+    notifyWarning('自动更新频率范围为 10 ~ 86400 秒')
     return
   }
 
   saving.value = true
   try {
-    const rsp = await request.post('/settings/set', {
-      section: state.section,
-      data: {
-        enabled: state.enabled,
-        interval_seconds: String(seconds),
-        log_level: state.log_level
-      }
+    const rsp = await settingsApi.set(state.section, {
+      enabled: state.enabled,
+      interval_seconds: String(seconds),
+      log_level: state.log_level
     })
     if (rsp?.data?.code === 200) {
-      toast.success('策略保存成功')
+      notifySuccess('策略保存成功')
       return
     }
-    toast.error(rsp?.data?.msg || '策略保存失败')
+    notifyError(rsp?.data?.msg || '策略保存失败')
   } catch (error: any) {
-    toast.error(error?.response?.data?.msg || '策略保存失败')
+    notifyError(error?.response?.data?.msg || '策略保存失败')
   } finally {
     saving.value = false
   }
@@ -81,22 +72,22 @@ onMounted(() => {
 
 <template>
   <div class="space-y-5">
-    <div class="rounded-lg border weak-divider p-4 space-y-4 bg-background/70 dark:bg-muted/30">
+    <el-card v-loading="loading" shadow="never" class="settings-section-card">
       <div class="text-sm font-semibold">消息队列状态更新策略</div>
 
-      <div class="flex items-center justify-between">
+      <div class="flex items-center justify-between mt-4">
         <div class="space-y-1">
           <div class="text-sm font-medium">自动更新</div>
           <div class="text-xs text-muted-foreground">
             关闭表示手动更新（仅点击测试时更新状态）；打开表示按频率自动更新
           </div>
         </div>
-        <Switch v-model="enabledBool" :disabled="loading || saving" />
+        <el-switch v-model="enabledBool" :disabled="loading || saving" />
       </div>
 
       <div v-if="enabledBool" class="space-y-2">
         <label class="text-sm font-medium text-foreground">自动更新频率（秒）</label>
-        <Input
+        <el-input
           v-model="state.interval_seconds"
           type="number"
           min="10"
@@ -110,17 +101,12 @@ onMounted(() => {
 
       <div class="space-y-2">
         <label class="text-sm font-medium text-foreground">日志级别</label>
-        <Select v-model="state.log_level" :disabled="loading || saving">
-          <SelectTrigger>
-            <SelectValue placeholder="选择日志级别" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="debug">debug</SelectItem>
-            <SelectItem value="info">info</SelectItem>
-            <SelectItem value="warn">warn</SelectItem>
-            <SelectItem value="error">error</SelectItem>
-          </SelectContent>
-        </Select>
+        <el-select v-model="state.log_level" class="w-full" :disabled="loading || saving" placeholder="选择日志级别">
+          <el-option label="debug" value="debug" />
+          <el-option label="info" value="info" />
+          <el-option label="warn" value="warn" />
+          <el-option label="error" value="error" />
+        </el-select>
         <p class="text-xs text-muted-foreground">
           推荐生产环境使用 warn 或 error，可明显减少终端日志噪音
         </p>
@@ -130,10 +116,18 @@ onMounted(() => {
       </div>
 
       <div class="flex justify-end">
-        <Button :disabled="loading || saving" @click="saveConfig">
-          {{ saving ? '保存中...' : '保存策略' }}
-        </Button>
+        <el-button type="primary" :disabled="loading || saving" :loading="saving" @click="saveConfig">
+          保存策略
+        </el-button>
       </div>
-    </div>
+    </el-card>
   </div>
 </template>
+
+<style scoped>
+:deep(.settings-section-card > .el-card__body) {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+</style>

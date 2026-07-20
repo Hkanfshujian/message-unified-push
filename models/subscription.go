@@ -11,6 +11,7 @@ import (
 // Subscription 订阅规则
 type Subscription struct {
 	UUIDModel
+	SoftDeleteModel
 	Name      string `json:"name" gorm:"type:varchar(200);not null"`
 	SourceID  string `json:"source_id" gorm:"type:varchar(12);not null"`
 	Topic     string `json:"topic" gorm:"type:varchar(200);not null"`
@@ -18,8 +19,8 @@ type Subscription struct {
 	GroupName string `json:"group_name" gorm:"type:varchar(200)"`
 
 	// 正则配置
-	ValidateRegex string `json:"validate_regex" gorm:"type:text"`  // 验证正则
-	ExtractRegex  string `json:"extract_regex" gorm:"type:text"`   // 提取正则
+	ValidateRegex string `json:"validate_regex" gorm:"type:text"` // 验证正则
+	ExtractRegex  string `json:"extract_regex" gorm:"type:text"`  // 提取正则
 	ExtractField  string `json:"extract_field" gorm:"type:varchar(100)"`
 
 	// 模板
@@ -30,8 +31,8 @@ type Subscription struct {
 	ConsumeMode string `json:"consume_mode" gorm:"type:varchar(20);default:'text'"`
 
 	// 状态
-	Enabled     int    `json:"enabled" gorm:"default:1"`
-	Status      string `json:"status" gorm:"type:varchar(20);default:'stopped'"`    // running/stopped/error
+	Enabled int    `json:"enabled" gorm:"default:1"`
+	Status  string `json:"status" gorm:"type:varchar(20);default:'stopped'"` // running/stopped/error
 
 	// 统计
 	TotalConsumed   int       `json:"total_consumed" gorm:"default:0"`
@@ -41,14 +42,20 @@ type Subscription struct {
 }
 
 // GenerateSubscriptionUniqueID 生成唯一ID: SUB + 9位随机（总长12，匹配数据库字段）
-func GenerateSubscriptionUniqueID() string {
-	newUUID := util.GenerateRandomString(9)
-	return fmt.Sprintf("SUB%s", newUUID)
+func GenerateSubscriptionUniqueID() (string, error) {
+	newUUID, err := util.GenerateRandomString(9)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("SUB%s", newUUID), nil
 }
 
 // AddSubscription 添加订阅规则
 func AddSubscription(name, sourceID, topic, tag, groupName, validateRegex, extractRegex, extractField, templateID, consumeMode, createdBy string) (string, error) {
-	newUUID := GenerateSubscriptionUniqueID()
+	newUUID, err := GenerateSubscriptionUniqueID()
+	if err != nil {
+		return "", err
+	}
 	subscription := Subscription{
 		UUIDModel: UUIDModel{
 			ID:         newUUID,
@@ -174,8 +181,8 @@ func UpdateSubscription(id string, data map[string]interface{}) error {
 }
 
 // DeleteSubscription 删除订阅
-func DeleteSubscription(id string) error {
-	return db.Where("id = ?", id).Delete(&Subscription{}).Error
+func ArchiveSubscription(id string) error {
+	return db.Unscoped().Where("id = ?", id).Delete(&Subscription{}).Error
 }
 
 // UpdateSubscriptionStatus 更新订阅状态
@@ -195,7 +202,7 @@ func UpdateSubscriptionStatus(id, status string, errorMsg *string) error {
 func IncrSubscriptionConsumed(id string) error {
 	return db.Model(&Subscription{}).Where("id = ?", id).
 		Updates(map[string]interface{}{
-			"total_consumed":  gorm.Expr("total_consumed + 1"),
+			"total_consumed":    gorm.Expr("total_consumed + 1"),
 			"last_consume_time": util.TimeNow(),
 		}).Error
 }
@@ -253,9 +260,10 @@ func UpdateSubscriptionStats(id string, matched, sendStatus int) error {
 		updates["total_consumed"] = gorm.Expr("total_consumed + 1")
 	}
 
-	if sendStatus == 1 {
+	switch sendStatus {
+	case 1:
 		updates["total_sent"] = gorm.Expr("total_sent + 1")
-	} else if sendStatus == 2 {
+	case 2:
 		updates["total_failed"] = gorm.Expr("total_failed + 1")
 	}
 

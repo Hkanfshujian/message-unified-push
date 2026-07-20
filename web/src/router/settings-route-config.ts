@@ -1,8 +1,10 @@
-export const systemSettingsChildren = [
+import type { RouteRecordRaw } from 'vue-router'
+
+export const systemSettingsChildren: RouteRecordRaw[] = [
   {
     path: '',
     name: 'system-settings-default',
-    redirect: '/system/settings/site'
+    redirect: to => ({ path: '/system/settings/site', query: to.query })
   },
   {
     path: 'site',
@@ -48,7 +50,7 @@ export const systemSettingsChildren = [
   }
 ]
 
-export const profileSettingsChildren = [
+export const profileSettingsChildren: RouteRecordRaw[] = [
   {
     path: '',
     name: 'profile-settings-default',
@@ -59,11 +61,5 @@ export const profileSettingsChildren = [
     name: 'profile-settings-password',
     component: () => import('../components/pages/settings/PasswordSettings.vue'),
     meta: { requiredPermissions: ['profile:settings:edit'] }
-  },
-  {
-    path: 'preference',
-    name: 'profile-settings-preference',
-    component: () => import('../components/pages/profile/ThemePreferenceSettings.vue'),
-    meta: { requiredPermissions: ['profile:settings:view'] }
   }
 ]

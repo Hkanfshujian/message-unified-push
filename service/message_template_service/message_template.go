@@ -22,7 +22,7 @@ type TemplateService struct {
 	Text             string
 	StartTime        string
 	EndTime          string
-	
+
 	PageNum  int
 	PageSize int
 }
@@ -76,7 +76,11 @@ func (s *TemplateService) Add() error {
 
 	newUUID := s.ID
 	if newUUID == "" {
-		newUUID = models.GenerateTemplateUniqueID()
+		var err error
+		newUUID, err = models.GenerateTemplateUniqueID()
+		if err != nil {
+			return err
+		}
 	}
 
 	model := models.Template{
@@ -94,7 +98,7 @@ func (s *TemplateService) Add() error {
 		IsAtAll:          s.IsAtAll,
 		Status:           s.Status,
 	}
-	
+
 	return model.Add()
 }
 
@@ -103,7 +107,7 @@ func (s *TemplateService) Update() error {
 	if err := s.validatePlaceholders(); err != nil {
 		return err
 	}
-	
+
 	model := models.Template{
 		UUIDModel: models.UUIDModel{
 			ID: s.ID,
@@ -119,12 +123,12 @@ func (s *TemplateService) Update() error {
 		IsAtAll:          s.IsAtAll,
 		Status:           s.Status,
 	}
-	
+
 	return model.Update()
 }
 
-// Delete 删除消息模板
-func (s *TemplateService) Delete() error {
+// Delete validates relationships before delegating to the model deletion.
+func (s *TemplateService) Archive() error {
 	if s.ID == "" {
 		return errors.New("模板ID不能为空")
 	}
@@ -143,7 +147,7 @@ func (s *TemplateService) Delete() error {
 			ID: s.ID,
 		},
 	}
-	return model.Delete()
+	return model.Archive()
 }
 
 // Get 获取单个消息模板
@@ -190,12 +194,12 @@ func (s *TemplateService) ExistByID() (bool, error) {
 // RenderTemplate 渲染模板（替换占位符）
 func (s *TemplateService) RenderTemplate(templateContent string, params map[string]string) string {
 	result := templateContent
-	
+
 	for key, value := range params {
 		placeholder := "{{" + key + "}}"
 		result = strings.ReplaceAll(result, placeholder, value)
 	}
-	
+
 	return result
 }
 
@@ -205,21 +209,21 @@ func (s *TemplateService) PreviewTemplate(params map[string]string) (map[string]
 	if err != nil {
 		return nil, err
 	}
-	
+
 	result := make(map[string]string)
-	
+
 	if template.TextTemplate != "" {
 		result["text"] = s.RenderTemplate(template.TextTemplate, params)
 	}
-	
+
 	if template.HTMLTemplate != "" {
 		result["html"] = s.RenderTemplate(template.HTMLTemplate, params)
 	}
-	
+
 	if template.MarkdownTemplate != "" {
 		result["markdown"] = s.RenderTemplate(template.MarkdownTemplate, params)
 	}
-	
+
 	return result, nil
 }
 
@@ -228,25 +232,25 @@ func (s *TemplateService) validatePlaceholders() error {
 	if s.Placeholders == "" {
 		return nil
 	}
-	
+
 	var placeholders []Placeholder
 	if err := json.Unmarshal([]byte(s.Placeholders), &placeholders); err != nil {
 		return errors.New("占位符格式错误，必须是有效的JSON数组")
 	}
-	
+
 	for _, p := range placeholders {
 		if p.Key == "" {
 			return errors.New("占位符的key不能为空")
 		}
 	}
-	
+
 	return nil
 }
 
 // getMaps 获取查询条件
 func (s *TemplateService) getMaps() map[string]interface{} {
 	maps := make(map[string]interface{})
-	
+
 	if s.Status != "" {
 		maps["status"] = s.Status
 	}
@@ -256,6 +260,6 @@ func (s *TemplateService) getMaps() map[string]interface{} {
 	if s.EndTime != "" {
 		maps["end_time"] = s.EndTime
 	}
-	
+
 	return maps
 }

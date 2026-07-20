@@ -19,20 +19,6 @@
 Message Unified Push 是一个面向运维告警与业务通知的统一消息推送平台。  
 它把多渠道发送、模板管理、定时任务、MQ 订阅触发、权限控制和审计日志整合到一个系统中，提供统一 API 与可视化后台。
 
-- 更新记录
-
-```shell
-## 2026-05-11 平台v1版本最后一次更新
-1、全面更新页面UI布局和组件样式，更好看
-  - 主要是侧边栏、首页、便签 等样式和动效调整
-# 注意：升级前请备份数据库
-
-## v2版本将于5月中旬或月底发布，敬请期待
-1、全新的前端框架，全新的页面样式，更现代化。以下是v2版本前瞻
-```
-
-![image-20260511000302212](https://image.hukanfa.com/public/images/image-20260511000302212.png)
-
 
 
 # 致谢
@@ -66,48 +52,18 @@ Message Unified Push 是一个面向运维告警与业务通知的统一消息�
 
 # 3 更新调整
 
-`Message Unified Push` 诞生主要适应于企业内部使用需求，相较于原项目主要改动点如下
+`Message Unified Push` 诞生主要适应于企业内部使用需求，v2.0版本主要改动点如下
 
-- 调整UI布局 - 本次更新页面内容，其他页面不贴图了。
+- 简洁好看的登录首页
 
-![image-20260510235805331](https://image.hukanfa.com/public/images/image-20260510235805331.png)
+![image-20260721003153799](https://image.hukanfa.com/typora_images/image-20260721003153799.png)
 
-- 增加RBAC权限管理体系，对接 Casdoor 实现企微登录
+- 专业的统计页面和全局统一的UI样式，视觉体验更佳
 
-![权限管理](data/demo/05.png)
+![image-20260721003432516](https://image.hukanfa.com/typora_images/image-20260721003432516.png)
 
-- 区分系统设置和个人设置
-
-```shell
-## 系统设置
-1、新增：认证设置、存储设置、策略配置、加解密工具
-2、优化：站点设置、数据清理
-```
-
-![系统设置](data/demo/03.png)
-
-- 新增企业微信应用推送渠道
-- 新增订阅消息功能(仅实现rocketmq)
-
-```shell
-1、支持通过订阅Topic,消费到消息即可推送
-2、支持通过表达式过滤出目标消息、进一步提取需要的字段作为模板变量值，从而实现消息模板的动态更新
-3、
-```
-
-![订阅消息-消费记录](data/demo/06.png)
-
-![订阅消息-消费记录详情](data/demo/07.png)
-
-![订阅消息-新增消费](data/demo/08.png)
-
-- 定时消息支持关联消息模板，彻底移除原v1版本逻辑
-  ![定时消息](data/demo/09.png)
-- 统一日志管理，支持按时间维度查询
-  ![日志管理](data/demo/10.png)
-  ![日志管理-详情](data/demo/11.png)
-
-
+- 另外新增了系统通知功能，更贴近企业需求
+- 后续将在v2.0版本基础上迭代更多功能，大家有需求可提 issue 或者添加微信交流群
 
 # 4 快速开始
 
@@ -247,29 +203,12 @@ npm run dev
 
   - 访问-容器方式需访问：<http://ip:8081>  进入管理后台
 
-  ![登录界面](data/demo/login.png)
 
 
 
 
 
-# 5 文档导航
-
-详细技术文档统一维护在 `docs/`，README 仅保留读者入口信息。
-
-- 文档首页：[docs/index.md](docs/index.md)
-- 功能导览：[docs/guide/features.md](docs/guide/features.md)
-- 快速部署：[docs/deployment/overview.md](docs/deployment/overview.md)
-- 配置说明：[docs/deployment/configuration.md](docs/deployment/configuration.md)
-- API 文档：
-  - [docs/api/v1.md](docs/api/v1.md)
-  - [docs/api/v2.md](docs/api/v2.md)
-  - [docs/api/examples.md](docs/api/examples.md)
-- 本地开发：[docs/deployment/development.md](docs/deployment/development.md)
-
-
-
-# 6 交流
+# 5 交流
 
 - 可加微信 fa100860804 进群交流，备注： github unified push
 
@@ -277,6 +216,6 @@ npm run dev
 
 
 
-# 7 许可证
+# 6 许可证
 
 本项目基于 [MIT License](LICENSE) 开源。

@@ -1,22 +1,26 @@
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted } from 'vue'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import EmptyTableState from '@/components/ui/EmptyTableState.vue'
-import Pagination from '@/components/ui/Pagination.vue'
-import ClickableTruncate from '@/components/ui/ClickableTruncate.vue'
+import { Plus, Search } from '@element-plus/icons-vue'
 import TemplateApiViewer from './TemplateApiViewer.vue'
 import TemplateInstanceConfig from './TemplateInstanceConfig.vue'
 import TemplateEditor from './TemplateEditor.vue'
-import { request } from '@/api/api'
+import AppEmptyState from '@/components/ui/AppEmptyState.vue'
+import AppPagination from '@/components/ui/AppPagination.vue'
+import AppRowActions from '@/components/ui/AppRowActions.vue'
+import AppStatusTag from '@/components/ui/AppStatusTag.vue'
+import AppTable, { type AppTableColumn } from '@/components/ui/AppTable.vue'
+import AppTableToolbar from '@/components/ui/table-toolbar/AppTableToolbar.vue'
+import AppTruncate from '@/components/ui/AppTruncate.vue'
+import { templatesApi } from '@/api/templates'
 import { getPageSize } from '@/util/pageUtils'
+import { createTableToolbarState, getVisibleToolbarColumns } from '@/components/ui/table-toolbar/tableToolbar'
+import type { TableToolbarColumn } from '@/components/ui/table-toolbar/types'
 import { appendDateRangeQuery, pickDateRangeQuery } from '@/util/routeQuery'
-import { toast } from 'vue-sonner'
+import { notifyError, notifySuccess } from '@/util/uiFeedback'
 import { useRoute, useRouter } from 'vue-router'
+import { zhCN } from '@/locales/zh-CN'
+
+const messages = zhCN.messageTemplate
 
 interface MessageTemplate {
   id: string  // 模板ID是字符串类型（UUID）
@@ -44,8 +48,45 @@ let state = reactive({
   currPage: 1,
   pageSize: getPageSize() as number,
   search: '',
-  status: 'all'
+  status: 'all',
+  loading: false
 })
+
+const columns: AppTableColumn[] = [
+  { prop: 'id', label: 'ID', width: 120 },
+  { prop: 'name', label: '模板名称', minWidth: 220 },
+  { prop: 'description', label: '描述', minWidth: 180 },
+  { prop: 'formats', label: '支持格式', minWidth: 180 },
+  { prop: 'relations', label: '外部关联', width: 120, align: 'center' },
+  { prop: 'status', label: '状态', width: 100, align: 'center' },
+  { prop: 'created_on', label: '创建时间', minWidth: 170 },
+  { prop: 'actions', label: '操作', width: 220, align: 'center', fixed: 'right' }
+]
+
+const toolbarColumns: TableToolbarColumn[] = columns.map(column => ({
+  key: column.prop || column.label,
+  label: column.label,
+  required: column.prop === 'id' || column.prop === 'actions'
+}))
+
+const tableToolbar = reactive(createTableToolbarState(toolbarColumns))
+const visibleColumns = computed(() => getVisibleToolbarColumns(columns, tableToolbar.visibleColumns))
+
+const refreshTable = async () => {
+  if (tableToolbar.refreshing) return
+  tableToolbar.refreshing = true
+  try {
+    await reloadList()
+  } finally {
+    tableToolbar.refreshing = false
+  }
+}
+
+const statusOptions = [
+  { value: 'all', label: '全部状态' },
+  { value: 'enabled', label: '启用' },
+  { value: 'disabled', label: '禁用' }
+]
 
 // API代码查看器状态
 const isApiViewerOpen = ref(false)
@@ -63,8 +104,6 @@ const selectedTemplateForEdit = ref<MessageTemplate | null>(null)
 const isDeleteConfirmOpen = ref(false)
 const deleteConfirmInput = ref('')
 const deleteTarget = ref<MessageTemplate | null>(null)
-
-const totalPages = computed(() => Math.ceil(state.total / state.pageSize))
 
 const parsePositiveNumber = (value: unknown, fallback: number) => {
   const n = Number(value)
@@ -88,28 +127,27 @@ const syncRouteQuery = async () => {
 }
 
 const queryListData = async (page: number, size: number, text = '', status = '') => {
-  const params: any = { page, size, text, status }
-  const { startTime, endTime } = pickDateRangeQuery(route.query as Record<string, unknown>)
-  if (startTime) params.start_time = startTime
-  if (endTime) params.end_time = endTime
-  const rsp = await request.get('/templates/list', { params })
-  state.tableData = rsp.data.data.lists || []
-  state.total = rsp.data.data.total || 0
-}
-
-const changePage = async (page: number) => {
-  if (page >= 1 && page <= totalPages.value) {
-    state.currPage = page
-    await syncRouteQuery()
-    const statusParam = state.status === 'all' ? '' : state.status
-    await queryListData(state.currPage, state.pageSize, state.search, statusParam)
+  state.loading = true
+  try {
+    const params: any = { page, size, text, status }
+    const { startTime, endTime } = pickDateRangeQuery(route.query as Record<string, unknown>)
+    if (startTime) params.start_time = startTime
+    if (endTime) params.end_time = endTime
+    const rsp = await templatesApi.list(params)
+    if (rsp?.data?.code === 200) {
+      state.tableData = rsp.data.data?.lists || []
+      state.total = rsp.data.data?.total || 0
+      return
+    }
+    notifyError(rsp?.data?.msg || '获取模板列表失败')
+  } catch (error) {
+    notifyError('获取模板列表时发生错误')
+  } finally {
+    state.loading = false
   }
 }
 
-const handlePageSizeChange = async (size: number) => {
-  if (size <= 0) return
-  state.pageSize = size
-  state.currPage = 1
+const reloadList = async () => {
   await syncRouteQuery()
   const statusParam = state.status === 'all' ? '' : state.status
   await queryListData(state.currPage, state.pageSize, state.search, statusParam)
@@ -117,9 +155,13 @@ const handlePageSizeChange = async (size: number) => {
 
 const filterFunc = async () => {
   state.currPage = 1
-  await syncRouteQuery()
-  const statusParam = state.status === 'all' ? '' : state.status
-  await queryListData(state.currPage, state.pageSize, state.search, statusParam)
+  await reloadList()
+}
+
+const handlePageChange = async ({ page, pageSize }: { page: number; pageSize: number }) => {
+  state.currPage = page
+  state.pageSize = pageSize
+  await reloadList()
 }
 
 const openAddDialog = () => {
@@ -135,16 +177,14 @@ const openEditDialog = (template: MessageTemplate) => {
 }
 
 const handleEditorSaved = async () => {
-  // 刷新列表
   const statusParam = state.status === 'all' ? '' : state.status
   await queryListData(state.currPage, state.pageSize, state.search, statusParam)
 }
 
 const deleteTemplate = async (id: string) => {
-  const rsp = await request.post('/templates/delete', { id })
+  const rsp = await templatesApi.remove(id)
   if (rsp.status === 200 && rsp.data.code === 200) {
-    toast.success(rsp.data.msg)
-    // 刷新列表，处理status参数
+    notifySuccess(rsp.data.msg)
     const statusParam = state.status === 'all' ? '' : state.status
     await queryListData(state.currPage, state.pageSize, state.search, statusParam)
   }
@@ -153,7 +193,7 @@ const deleteTemplate = async (id: string) => {
 const openDeleteConfirm = (template: MessageTemplate) => {
   // 如果存在外部关联（目前主要是定时消息），先提示并展示关联列表，不进入删除确认流程
   if ((template.cron_msg_count ?? 0) > 0) {
-    toast.error('当前模板存在外部关联，请先在相关功能中删除关联后再删除模板')
+    notifyError('当前模板存在外部关联，请先在相关功能中删除关联后再删除模板')
     openRelationDialog(template)
     return
   }
@@ -188,6 +228,12 @@ const isRelationDialogOpen = ref(false)
 const relationList = ref<Array<{ index: number; type: string; id: string; name: string }>>([])
 const relationLoading = ref(false)
 const relationTemplateName = ref('')
+const relationColumns: AppTableColumn[] = [
+  { prop: 'index', label: messages.index, width: 70, align: 'center' },
+  { prop: 'type', label: messages.relationType, width: 120 },
+  { prop: 'id', label: 'ID', minWidth: 150 },
+  { prop: 'name', label: messages.name, minWidth: 180 }
+]
 
 const openRelationDialog = async (template: MessageTemplate) => {
   relationTemplateName.value = template.name
@@ -195,7 +241,7 @@ const openRelationDialog = async (template: MessageTemplate) => {
   relationLoading.value = true
   isRelationDialogOpen.value = true
   try {
-    const rsp = await request.get('/templates/relations', { params: { id: template.id } })
+    const rsp = await templatesApi.relations(template.id)
     const list = rsp.data.data?.relations || []
     relationList.value = list.map((item: any, idx: number) => ({
       index: idx + 1,
@@ -204,7 +250,7 @@ const openRelationDialog = async (template: MessageTemplate) => {
       name: item.name || ''
     }))
   } catch (error) {
-    toast.error('获取关联信息失败')
+    notifyError('获取关联信息失败')
   } finally {
     relationLoading.value = false
   }
@@ -242,127 +288,70 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="space-y-2">
-    <div class="toolbar">
-      <div class="search-group">
-        <Input
-          v-model="state.search"
-          placeholder="搜索..."
-          class="search-input"
-          @keyup.enter="filterFunc"
-          @blur="filterFunc"
-        />
-
-        <Select v-model="state.status" class="w-full" @update:model-value="filterFunc">
-          <SelectTrigger class="filter-select w-full">
-            <SelectValue placeholder="选择状态" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value="all">全部</SelectItem>
-              <SelectItem value="enabled">启用</SelectItem>
-              <SelectItem value="disabled">禁用</SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
+  <div class="space-y-4">
+    <el-card shadow="never">
+      <div class="page-toolbar">
+        <el-input v-model="state.search" clearable :placeholder="messages.searchPlaceholder" class="w-full md:!w-[280px]" @keyup.enter="filterFunc">
+          <template #prefix><Search /></template>
+        </el-input>
+        <el-select v-model="state.status" class="w-full md:!w-[150px]" @change="filterFunc">
+          <el-option v-for="option in statusOptions" :key="option.value" :label="option.label" :value="option.value" />
+        </el-select>
+        <el-button :icon="Search" type="primary" @click="filterFunc">{{ messages.search }}</el-button>
+        <div class="flex-1" />
+        <el-button v-permission="'message:template:add'" :icon="Plus" type="primary" @click="openAddDialog">{{ messages.create }}</el-button>
       </div>
+    </el-card>
 
-      <Button v-permission="'message:template:add'" @click="openAddDialog" class="primary-btn">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-        </svg>
-        新建模板
-      </Button>
-    </div>
+    <el-card shadow="never" body-class="!p-0" :class="tableToolbar.focused ? 'app-table-focused-card' : ''">
+      <AppTableToolbar
+        :title="messages.title"
+        :columns="toolbarColumns"
+        v-model:visible-columns="tableToolbar.visibleColumns"
+        v-model:focused="tableToolbar.focused"
+        :refreshing="tableToolbar.refreshing || state.loading"
+        @refresh="refreshTable"
+      >
+        <template #summary>
+          <span class="text-xs text-muted-foreground">{{ messages.totalPrefix }}{{ state.total }}{{ messages.itemUnit }}</span>
+        </template>
+      </AppTableToolbar>
+      <AppTable :data="state.tableData" :columns="visibleColumns" :loading="state.loading" :empty-text="messages.empty">
+        <template #description="{ row }">
+          <AppTruncate :text="row.description || '-'" :title="messages.description" width="560px" />
+        </template>
+        <template #formats="{ row }">
+          <div class="flex flex-wrap gap-1">
+            <el-tag v-if="row.text_template" size="small" effect="plain">Text</el-tag>
+            <el-tag v-if="row.html_template" size="small" effect="plain">HTML</el-tag>
+            <el-tag v-if="row.markdown_template" size="small" effect="plain">Markdown</el-tag>
+          </div>
+        </template>
+        <template #relations="{ row }">
+          <el-button link type="primary" @click="openRelationDialog(row as MessageTemplate)">{{ row.cron_msg_count ?? 0 }}</el-button>
+        </template>
+        <template #status="{ row }">
+          <AppStatusTag :status="row.status" />
+        </template>
+        <template #actions="{ row }">
+          <AppRowActions :actions="[
+            { key: 'edit', label: messages.edit, kind: 'write', permission: 'message:template:edit', onClick: () => openEditDialog(row as MessageTemplate) },
+            { key: 'delete', label: messages.delete, kind: 'write', permission: 'message:template:delete', danger: true, onClick: () => openDeleteConfirm(row as MessageTemplate) },
+            { key: 'instance', label: messages.instance, kind: 'write', permission: 'message:template:instance', onClick: () => handleConfigInstance(row as MessageTemplate) },
+            { key: 'logs', label: messages.logs, kind: 'view', onClick: () => handleViewLogs(row as MessageTemplate) },
+            { key: 'api', label: messages.api, kind: 'view', onClick: () => handleViewApi(row as MessageTemplate) }
+          ]" />
+        </template>
+        <template #empty>
+          <AppEmptyState :description="messages.empty" />
+        </template>
+      </AppTable>
+      <div class="px-4">
+        <AppPagination v-model:current-page="state.currPage" v-model:page-size="state.pageSize" :total="state.total" @change="handlePageChange" />
+      </div>
+    </el-card>
 
-    <!-- 表格 -->
-    <div class="rounded border weak-divider overflow-x-auto">
-      <Table class="data-table border-collapse">
-      <TableHeader>
-        <TableRow>
-          <TableHead class="w-24">ID</TableHead>
-          <TableHead class="w-[288px] min-w-[288px] whitespace-normal">模板名称</TableHead>
-          <TableHead class="w-[240px]">描述</TableHead>
-          <TableHead class="w-[200px]">支持格式</TableHead>
-          <TableHead class="w-[140px] whitespace-nowrap">外部关联</TableHead>
-          <TableHead>状态</TableHead>
-          <TableHead class="whitespace-nowrap w-[160px]">创建时间</TableHead>
-          <TableHead class="text-center">操作</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        <!-- 空数据展示 -->
-        <TableRow v-if="state.tableData.length === 0">
-          <TableCell colspan="7" class="empty-state">
-            <EmptyTableState 
-              title="暂无消息模板" 
-              description="还没有创建任何消息模板，点击右上角按钮创建新模板" 
-            >
-              <template #icon>
-                <svg class="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                </svg>
-              </template>
-            </EmptyTableState>
-          </TableCell>
-        </TableRow>
-        
-        <!-- 数据行 -->
-        <TableRow v-for="item in state.tableData" :key="item.id">
-          <TableCell>{{ item.id }}</TableCell>
-          <TableCell class="table-cell w-[288px] min-w-[288px] whitespace-normal">
-            {{ item.name }}
-          </TableCell>
-          <TableCell>
-            <ClickableTruncate :text="item.description || '-'" wrapper-class="max-w-[80px] sm:max-w-[130px]" preview-title="模板描述" />
-          </TableCell>
-          <TableCell>
-            <div class="flex gap-1">
-              <Badge v-if="item.text_template" variant="secondary">Text</Badge>
-              <Badge v-if="item.html_template" variant="secondary">HTML</Badge>
-              <Badge v-if="item.markdown_template" variant="secondary">Markdown</Badge>
-            </div>
-          </TableCell>
-          <TableCell class="whitespace-nowrap">
-            <Button
-              size="sm"
-              variant="ghost"
-              class="h-7 px-2 text-xs text-brand-600 hover:text-brand-700 hover:bg-brand-50"
-              @click="openRelationDialog(item)"
-            >
-              {{ item.cron_msg_count ?? 0 }}
-            </Button>
-          </TableCell>
-          <TableCell>
-            <Badge :variant="item.status === 'enabled' ? 'default' : 'secondary'">
-              {{ item.status === 'enabled' ? '启用' : '禁用' }}
-            </Badge>
-          </TableCell>
-          <TableCell class="whitespace-nowrap w-[160px]">{{ item.created_on }}</TableCell>
-          <TableCell class="text-center space-x-2">
-            <Button size="sm" variant="outline" @click="handleViewLogs(item)">日志</Button>
-            <Button size="sm" variant="outline" @click="handleViewApi(item)">接口</Button>
-            <Button v-permission="'message:template:edit'" size="sm" variant="outline" @click="openEditDialog(item)">编辑</Button>
-            <Button v-permission="'message:template:instance'" size="sm" variant="outline" @click="handleConfigInstance(item)">实例</Button>
-            <Button v-permission="'message:template:delete'" size="sm" variant="destructive" @click="openDeleteConfirm(item)">删除</Button>
-          </TableCell>
-        </TableRow>
-      </TableBody>
-    </Table>
-    </div>
-
-    <!-- 分页 -->
-    <div class="pagination">
-      <Pagination 
-        :total="state.total" 
-        :current-page="state.currPage" 
-        :page-size="state.pageSize" 
-        @page-change="changePage"
-        @page-size-change="handlePageSizeChange"
-      />
-    </div>
-
-    <!-- 模板编辑器 -->
+    <!-- Template editor -->
     <TemplateEditor
       :open="isEditorOpen"
       :is-editing="isEditing"
@@ -371,87 +360,102 @@ onMounted(async () => {
       @saved="handleEditorSaved"
     />
 
-    <!-- API代码查看器 -->
+    <!-- API code viewer -->
     <TemplateApiViewer 
       :open="isApiViewerOpen" 
       :template-data="selectedTemplateForApi || undefined"
       @update:open="isApiViewerOpen = $event"
     />
 
-    <!-- 配置实例 -->
+    <!-- Instance configuration -->
     <TemplateInstanceConfig 
       :open="isInstanceConfigOpen" 
       :template-data="selectedTemplateForInstance"
       @update:open="isInstanceConfigOpen = $event"
     />
 
-    <Dialog :open="isDeleteConfirmOpen" @update:open="(value) => value ? (isDeleteConfirmOpen = true) : closeDeleteConfirm()">
-      <DialogContent class="w-[420px] max-w-[90vw]">
-        <DialogHeader>
-          <DialogTitle>确认删除模板</DialogTitle>
-        </DialogHeader>
+    <el-dialog v-model="isDeleteConfirmOpen" :title="messages.confirmDelete" width="min(420px, calc(100vw - 24px))" class="app-nested-dialog" append-to-body @closed="closeDeleteConfirm">
         <div class="space-y-2">
           <div class="text-sm text-muted-foreground">
-            请输入要删除的模板名称
+            {{ messages.confirmNamePrefix }}
             <span v-if="deleteTarget?.name" class="text-red-500 font-semibold mx-1">{{ deleteTarget.name }}</span>
-            以确认操作
+            {{ messages.confirmNameSuffix }}
           </div>
-          <Input
-            v-model="deleteConfirmInput"
-            :max-length="25"
-            placeholder="请输入模板名称"
-            class="confirm-delete-input"
-          />
-          <div v-if="showDeleteError" class="error-tip">名称不匹配，请重新输入</div>
+          <el-input v-model="deleteConfirmInput" :maxlength="25" :placeholder="messages.namePlaceholder" />
+          <div v-if="showDeleteError" class="text-xs text-red-500">{{ messages.nameMismatch }}</div>
         </div>
-        <DialogFooter class="flex justify-end gap-2 mt-4">
-          <Button type="button" class="cancel-btn" @click="closeDeleteConfirm">取消</Button>
-          <Button type="button" class="danger-btn" :disabled="!isDeleteMatch" @click="handleConfirmDelete">
-            确认删除
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <template #footer>
+          <el-button @click="closeDeleteConfirm">{{ messages.cancel }}</el-button>
+          <el-button type="danger" :disabled="!isDeleteMatch" @click="handleConfirmDelete">{{ messages.confirmDelete }}</el-button>
+        </template>
+    </el-dialog>
 
-    <Dialog :open="isRelationDialogOpen" @update:open="(value) => isRelationDialogOpen = value">
-      <DialogContent class="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>模板关联信息：{{ relationTemplateName }}</DialogTitle>
-        </DialogHeader>
-        <div v-if="relationLoading" class="py-4 text-sm text-muted-foreground">
-          加载中...
+    <el-dialog
+      v-model="isRelationDialogOpen"
+      :title="`${messages.relationTitlePrefix}${relationTemplateName}`"
+      width="min(680px, calc(100vw - 24px))"
+      class="app-nested-dialog relation-dialog"
+      append-to-body
+      destroy-on-close
+    >
+      <div class="relation-dialog-content">
+        <div class="relation-dialog-intro">
+          <span>以下功能正在使用此模板，删除模板前需要先解除关联。</span>
+          <el-tag size="small" effect="plain">共 {{ relationList.length }} 项</el-tag>
         </div>
-        <div v-else class="max-h-[320px] overflow-auto mt-2">
-          <Table class="text-xs">
-            <TableHeader>
-              <TableRow>
-                <TableHead class="w-12">序号</TableHead>
-                <TableHead class="w-24">关联类型</TableHead>
-                <TableHead class="w-32">ID</TableHead>
-                <TableHead>名称</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow v-if="relationList.length === 0">
-                <TableCell colspan="4" class="text-center text-muted-foreground py-4">
-                  暂无关联记录
-                </TableCell>
-              </TableRow>
-              <TableRow v-for="item in relationList" :key="item.index">
-                <TableCell>{{ item.index }}</TableCell>
-                <TableCell>{{ item.type }}</TableCell>
-                <TableCell>{{ item.id }}</TableCell>
-                <TableCell>{{ item.name }}</TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </div>
-        <DialogFooter>
-          <Button type="button" size="sm" variant="outline" @click="isRelationDialogOpen = false">
-            关闭
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <AppTable
+          :data="relationList"
+          :columns="relationColumns"
+          :loading="relationLoading"
+          :empty-text="messages.noRelations"
+          size="small"
+        >
+          <template #id="{ row }">
+            <code class="relation-dialog-id">{{ row.id || '-' }}</code>
+          </template>
+          <template #name="{ row }">
+            <AppTruncate :text="String(row.name || '-')" :max-length="32" />
+          </template>
+        </AppTable>
+      </div>
+      <template #footer>
+        <el-button @click="isRelationDialogOpen = false">{{ messages.close }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.relation-dialog-content {
+  display: grid;
+  gap: 14px;
+}
+
+.relation-dialog-intro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.relation-dialog-id {
+  color: var(--foreground);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.relation-dialog-content :deep(.el-table .cell) {
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .relation-dialog-intro {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+</style>

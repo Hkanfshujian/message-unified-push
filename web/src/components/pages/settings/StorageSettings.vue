@@ -1,17 +1,25 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { request } from '@/api/api'
-import { toast } from 'vue-sonner'
+import { settingsApi } from '@/api/settings'
+import { notifyError, notifySuccess } from '@/util/uiFeedback'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import AppFormDrawer from '@/components/ui/AppFormDrawer.vue'
+import AppRowActions from '@/components/ui/AppRowActions.vue'
 import {
+  CloudServerOutlined,
   CopyOutlined,
+  FileOutlined,
   FolderOutlined,
   FolderOpenOutlined,
+  LinkOutlined,
   RightOutlined,
-  CheckCircleOutlined,
-  CheckCircleFilled
+  StarFilled,
+  StarOutlined,
+  UploadOutlined,
+  ArrowLeftOutlined
 } from '@ant-design/icons-vue'
 
 const loading = ref(false)
@@ -56,7 +64,7 @@ const localBrowseDirectories = ref<LocalBrowseDirItem[]>([])
 const localBrowseFiles = ref<LocalBrowseFileItem[]>([])
 const browseKeyword = ref('')
 const browseViewMode = ref<'list' | 'thumb'>('list')
-const browseThumbSize = ref<'sm' | 'md' | 'lg'>('sm')
+const browseThumbSize = ref<'sm' | 'md' | 'lg'>('md')
 const filePreviewDialogOpen = ref(false)
 const filePreviewUrl = ref('')
 const filePreviewName = ref('')
@@ -217,7 +225,7 @@ const resetEditor = () => {
 const loadConfig = async () => {
   loading.value = true
   try {
-    const rsp = await request.get('/system/storage-config')
+    const rsp = await settingsApi.getStorageConfig()
     const data = rsp?.data?.data || {}
     const list = Array.isArray(data.profiles) ? data.profiles : []
     const { normalized, nextDefaultId } = normalizeProfilesFromApi(list, data.default_storage_id || '')
@@ -230,26 +238,26 @@ const loadConfig = async () => {
 
 const persistConfig = async (nextProfiles: StorageProfile[], nextDefaultStorageID: string, successText: string) => {
   if (nextProfiles.some(item => !isEightDigitStorageId(item.id))) {
-    toast.error('存储ID必须为8位数字')
+    notifyError('存储ID必须为8位数字')
     return false
   }
   if (!isEightDigitStorageId(nextDefaultStorageID)) {
-    toast.error('默认存储ID必须为8位数字')
+    notifyError('默认存储ID必须为8位数字')
     return false
   }
   saving.value = true
   try {
-    const rsp = await request.post('/system/storage-config', {
+    const rsp = await settingsApi.saveStorageConfig({
       default_storage_id: nextDefaultStorageID,
       profiles: nextProfiles
     })
     if (rsp?.data?.code === 200) {
       profiles.value = nextProfiles
       defaultStorageID.value = nextDefaultStorageID
-      toast.success(successText)
+      notifySuccess(successText)
       return true
     }
-    toast.error(rsp?.data?.msg || '存储配置保存失败')
+    notifyError(rsp?.data?.msg || '存储配置保存失败')
     return false
   } finally {
     saving.value = false
@@ -319,11 +327,11 @@ const joinPublicUrlAndObjectKey = (baseUrl: string, objectKey: string) => {
 
 const submitLocalUploadTest = async () => {
   if (!localUploadTestProfile.value) {
-    toast.error('未找到本地存储配置')
+    notifyError('未找到本地存储配置')
     return
   }
   if (!localUploadTestFile.value) {
-    toast.error('请选择要上传的测试文件')
+    notifyError('请选择要上传的测试文件')
     return
   }
   localUploadTesting.value = true
@@ -332,13 +340,9 @@ const submitLocalUploadTest = async () => {
     formData.append('profile_id', localUploadTestProfile.value.id)
     formData.append('file', localUploadTestFile.value)
     formData.append('delete_after_upload', localUploadDeleteAfter.value ? '1' : '0')
-    let rsp = await request.post('/system/storage-config/upload-file', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
+    let rsp = await settingsApi.uploadStorageFile(formData)
     if ((rsp as any)?.status === 404 && localUploadTestProfile.value.provider === 'local') {
-      rsp = await request.post('/system/storage-config/test-local-upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
+      rsp = await settingsApi.testLocalUpload(formData)
     }
     if (rsp?.data?.code === 200) {
       const objectKey = rsp?.data?.data?.object_key
@@ -347,7 +351,7 @@ const submitLocalUploadTest = async () => {
       const suffix = deleted ? '（已立即删除）' : ''
       const location = publicUrl || objectKey || ''
       localUploadLastLocation.value = location
-      toast.success(location ? `${rsp?.data?.msg || '文件上传成功'}：${location}${suffix}` : `${rsp?.data?.msg || '文件上传成功'}${suffix}`)
+      notifySuccess(location ? `${rsp?.data?.msg || '文件上传成功'}：${location}${suffix}` : `${rsp?.data?.msg || '文件上传成功'}${suffix}`)
       clearLocalUploadFile()
       if (localUploadAutoCloseTimer.value !== null) {
         window.clearInterval(localUploadAutoCloseTimer.value)
@@ -368,13 +372,13 @@ const submitLocalUploadTest = async () => {
       }, 1000)
       return
     }
-    toast.error(rsp?.data?.msg || '文件上传失败')
+    notifyError(rsp?.data?.msg || '文件上传失败')
   } catch (error: any) {
     if (error?.response?.status === 404) {
-      toast.error('上传接口不存在，请重启后端服务后重试')
+      notifyError('上传接口不存在，请重启后端服务后重试')
       return
     }
-    toast.error(error?.response?.data?.msg || '文件上传失败')
+    notifyError(error?.response?.data?.msg || '文件上传失败')
   } finally {
     localUploadTesting.value = false
   }
@@ -386,14 +390,14 @@ const handleTestClick = async (profile: StorageProfile) => {
 
 const openS3BrowseDialog = async (profile: StorageProfile) => {
   if (profile.provider !== 's3') {
-    toast.error('仅支持浏览 S3 存储')
+    notifyError('仅支持浏览 S3 存储')
     return
   }
   s3BrowseProfile.value = profile
   s3BrowseDialogOpen.value = true
   browseKeyword.value = ''
   browseViewMode.value = 'list'
-  browseThumbSize.value = 'sm'
+  browseThumbSize.value = 'md'
   await loadS3Objects('')
 }
 
@@ -401,12 +405,7 @@ const loadS3Objects = async (path: string) => {
   if (!s3BrowseProfile.value) return
   s3BrowseLoading.value = true
   try {
-    const rsp = await request.get('/system/storage-config/s3-objects', {
-      params: {
-        profile_id: s3BrowseProfile.value.id,
-        path
-      }
-    })
+    const rsp = await settingsApi.listS3Objects(s3BrowseProfile.value.id, path)
     const data = rsp?.data?.data || {}
     s3BrowseCurrentPath.value = data.current_path || ''
     s3BrowseParentPath.value = data.parent_path || ''
@@ -414,7 +413,7 @@ const loadS3Objects = async (path: string) => {
     s3BrowseDirectories.value = Array.isArray(data.directories) ? data.directories : []
     s3BrowseFiles.value = Array.isArray(data.files) ? data.files : []
   } catch (error: any) {
-    toast.error(error?.response?.data?.msg || '读取 S3 对象失败')
+    notifyError(error?.response?.data?.msg || '读取 S3 对象失败')
   } finally {
     s3BrowseLoading.value = false
   }
@@ -449,7 +448,7 @@ const openS3Breadcrumb = async (path: string) => {
 const previewS3File = (file: S3FileItem) => {
   const url = normalizeS3PreviewUrl(file.public_url || '', file.object_key || '')
   if (!url) {
-    toast.error('当前存储未配置 Public URL，无法预览')
+    notifyError('当前存储未配置 Public URL，无法预览')
     return
   }
   applyPreviewPayload({
@@ -496,14 +495,14 @@ const handleBrowseClick = async (profile: StorageProfile) => {
 
 const openLocalBrowseDialog = async (profile: StorageProfile) => {
   if (profile.provider !== 'local') {
-    toast.error('仅支持浏览本地存储')
+    notifyError('仅支持浏览本地存储')
     return
   }
   localBrowseProfile.value = profile
   localBrowseDialogOpen.value = true
   browseKeyword.value = ''
   browseViewMode.value = 'list'
-  browseThumbSize.value = 'sm'
+  browseThumbSize.value = 'md'
   await loadLocalBrowseFiles('')
 }
 
@@ -511,12 +510,7 @@ const loadLocalBrowseFiles = async (path: string) => {
   if (!localBrowseProfile.value) return
   localBrowseLoading.value = true
   try {
-    const rsp = await request.get('/system/storage-config/local-files', {
-      params: {
-        profile_id: localBrowseProfile.value.id,
-        path
-      }
-    })
+    const rsp = await settingsApi.listLocalFiles(localBrowseProfile.value.id, path)
     const data = rsp?.data?.data || {}
     localBrowseCurrentPath.value = data.current_path || ''
     localBrowseParentPath.value = data.parent_path || ''
@@ -524,7 +518,7 @@ const loadLocalBrowseFiles = async (path: string) => {
     localBrowseDirectories.value = Array.isArray(data.directories) ? data.directories : []
     localBrowseFiles.value = Array.isArray(data.files) ? data.files : []
   } catch (error: any) {
-    toast.error(error?.response?.data?.msg || '读取本地文件失败')
+    notifyError(error?.response?.data?.msg || '读取本地文件失败')
   } finally {
     localBrowseLoading.value = false
   }
@@ -568,7 +562,7 @@ const resolveLocalPublicUrl = (url: string) => {
 const previewLocalFile = (file: LocalBrowseFileItem) => {
   const url = resolveLocalPublicUrl(file.public_url)
   if (!url) {
-    toast.error('文件地址为空，无法预览')
+    notifyError('文件地址为空，无法预览')
     return
   }
   applyPreviewPayload({
@@ -626,7 +620,6 @@ const browseCurrentPath = computed(() => (browseMode.value === 's3' ? s3BrowseCu
 const browseDirectories = computed<BrowseDirItem[]>(() => (browseMode.value === 's3' ? s3BrowseDirectories.value : localBrowseDirectories.value))
 const browseFiles = computed<BrowseFileItem[]>(() => (browseMode.value === 's3' ? s3BrowseFiles.value : localBrowseFiles.value))
 const browseBreadcrumbs = computed<{ label: string, path: string }[]>(() => (browseMode.value === 's3' ? s3BrowseBreadcrumbs.value : localBrowseBreadcrumbs.value))
-const browseRootLabel = computed(() => (browseMode.value === 's3' ? '对象前缀：' : '根目录：'))
 const normalizedBrowseKeyword = computed(() => (browseKeyword.value || '').trim().toLowerCase())
 const filteredBrowseDirectories = computed<BrowseDirItem[]>(() => {
   if (!normalizedBrowseKeyword.value) return browseDirectories.value
@@ -712,21 +705,13 @@ const movePreviewBy = (step: number) => {
   applyPreviewPayload(previewFileEntries.value[nextIndex])
 }
 
-const browseThumbGridClass = computed(() => {
-  if (browseThumbSize.value === 'sm') return 'grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-2'
-  if (browseThumbSize.value === 'lg') return 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
-  return 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3'
-})
+const browseThumbGridClass = computed(() => `app-file-browser-grid app-file-browser-grid--${browseThumbSize.value}`)
 
-const browseThumbPreviewClass = computed(() => {
-  if (browseThumbSize.value === 'sm') return 'w-full h-20 rounded border weak-divider bg-muted/40 dark:bg-muted/20 overflow-hidden flex items-center justify-center'
-  if (browseThumbSize.value === 'lg') return 'w-full h-36 rounded border weak-divider bg-muted/40 dark:bg-muted/20 overflow-hidden flex items-center justify-center'
-  return 'w-full h-28 rounded border weak-divider bg-muted/40 dark:bg-muted/20 overflow-hidden flex items-center justify-center'
-})
-const browseDialogWidthClass = computed(() => {
-  if (browseViewMode.value === 'thumb') return '!w-[56vw] !max-w-[56vw] !sm:max-w-[792px]'
-  return '!w-[55vw] !max-w-[55vw] !sm:max-w-[672px]'
-})
+const browseDirectoryGridClass = computed(() => `app-file-browser-grid app-file-browser-grid--directories app-file-browser-grid--${browseThumbSize.value}`)
+
+const hasBrowseContent = computed(() => filteredBrowseDirectories.value.length > 0 || filteredBrowseFiles.value.length > 0)
+
+const browseThumbPreviewClass = computed(() => `storage-preview-tile app-file-browser-card-preview app-file-browser-card-preview--${browseThumbSize.value}`)
 
 const openBrowseParent = async () => {
   if (browseMode.value === 's3') {
@@ -773,7 +758,7 @@ const confirmDeleteBrowseFile = async () => {
   try {
     const profileID = browseMode.value === 's3' ? s3BrowseProfile.value?.id : localBrowseProfile.value?.id
     if (!profileID) {
-      toast.error('未找到存储配置')
+      notifyError('未找到存储配置')
       return
     }
     const payload: Record<string, string> = {
@@ -785,16 +770,16 @@ const confirmDeleteBrowseFile = async () => {
     } else {
       payload.relative_path = fileDeleteTargetPath.value
     }
-    const rsp = await request.post('/system/storage-config/delete-file', payload)
+    const rsp = await settingsApi.deleteStorageFile(payload)
     if (rsp?.data?.code !== 200) {
-      toast.error(rsp?.data?.msg || '删除失败')
+      notifyError(rsp?.data?.msg || '删除失败')
       return
     }
     if (filePreviewPath.value === fileDeleteTargetObjectKey.value || filePreviewPath.value === fileDeleteTargetPath.value) {
       filePreviewDialogOpen.value = false
     }
     fileDeleteConfirmOpen.value = false
-    toast.success('删除成功')
+    notifySuccess('删除成功')
     if (browseMode.value === 's3') {
       await loadS3Objects(s3BrowseCurrentPath.value || '')
     } else {
@@ -820,7 +805,7 @@ const openEditDialog = (profile: StorageProfile) => {
 const removeProfile = async (profileID: string) => {
   const next = profiles.value.filter(item => item.id !== profileID)
   if (next.length === 0) {
-    toast.error('至少保留一个存储配置')
+    notifyError('至少保留一个存储配置')
     return false
   }
   const nextDefaultStorageID = defaultStorageID.value === profileID ? next[0].id : defaultStorageID.value
@@ -874,7 +859,7 @@ const generateStorageId = () => {
 const copyText = async (text: string, label: string) => {
   const value = (text || '').trim()
   if (!value) {
-    toast.error(`${label}为空，无法复制`)
+    notifyError(`${label}为空，无法复制`)
     return
   }
   try {
@@ -890,9 +875,9 @@ const copyText = async (text: string, label: string) => {
       document.execCommand('copy')
       document.body.removeChild(textarea)
     }
-    toast.success(`${label}已复制`)
+    notifySuccess(`${label}已复制`)
   } catch (error) {
-    toast.error(`${label}复制失败`)
+    notifyError(`${label}复制失败`)
   }
 }
 
@@ -913,8 +898,6 @@ const normalizedLocalSubPath = computed(() => {
   return normalizeLocalSubPath(editor.local_sub_path) || 'uploads'
 })
 
-const localPathPreview = computed(() => `./data/${normalizedLocalSubPath.value}`)
-const localPathWillCreate = computed(() => !hasInvalidLocalPathSegment.value && normalizedLocalSubPath.value.length > 0)
 const selectedLocalDirPath = computed(() => normalizedLocalSubPath.value)
 const isCurrentDirSelected = computed(() => selectedLocalDirPath.value === (localDirCurrentPath.value || ''))
 
@@ -927,9 +910,7 @@ const openLocalDirDialog = async () => {
 const loadLocalDirectories = async (path: string) => {
   localDirLoading.value = true
   try {
-    const rsp = await request.get('/system/storage-config/local-directories', {
-      params: { path }
-    })
+    const rsp = await settingsApi.listLocalDirectories({ path })
     const data = rsp?.data?.data || {}
     localDirCurrentPath.value = data.current_path || ''
     localDirParentPath.value = data.parent_path || ''
@@ -969,22 +950,22 @@ const openBreadcrumbDirectory = async (path: string) => {
 const createLocalDirectory = async () => {
   const folderName = (localDirNewFolderName.value || '').trim()
   if (!folderName) {
-    toast.error('请输入目录名称')
+    notifyError('请输入目录名称')
     return
   }
   localDirCreating.value = true
   try {
-    const rsp = await request.post('/system/storage-config/local-directories', {
+    const rsp = await settingsApi.createLocalDirectory({
       path: localDirCurrentPath.value || '',
       name: folderName
     })
     if (rsp?.data?.code === 200) {
-      toast.success('目录创建成功')
+      notifySuccess('目录创建成功')
       localDirNewFolderName.value = ''
       await loadLocalDirectories(localDirCurrentPath.value || '')
       return
     }
-    toast.error(rsp?.data?.msg || '目录创建失败')
+    notifyError(rsp?.data?.msg || '目录创建失败')
   } finally {
     localDirCreating.value = false
   }
@@ -992,7 +973,7 @@ const createLocalDirectory = async () => {
 
 const chooseCurrentDirectory = () => {
   if (!localDirCurrentPath.value) {
-    toast.error('请先选择子目录')
+    notifyError('请先选择子目录')
     return
   }
   editor.local_sub_path = localDirCurrentPath.value
@@ -1010,19 +991,19 @@ const handleLocalDirDialogKeydown = (event: KeyboardEvent) => {
 
 const applyEditor = async () => {
   if (!editor.name.trim()) {
-    toast.error('请输入存储名称')
+    notifyError('请输入存储名称')
     return
   }
   if (editor.provider === 's3') {
     if (!editor.s3_endpoint.trim() || !editor.s3_bucket.trim() || !editor.s3_object_key_prefix.trim() || !editor.s3_access_key.trim() || !editor.s3_secret_key.trim()) {
-      toast.error('Please fill Endpoint, Bucket, Object Prefix, Access Key, Secret Key')
+      notifyError('Please fill Endpoint, Bucket, Object Prefix, Access Key, Secret Key')
       return
     }
   } else if (!editor.local_sub_path.trim()) {
-    toast.error('请输入本地路径')
+    notifyError('请输入本地路径')
     return
   } else if (hasInvalidLocalPathSegment.value) {
-    toast.error('本地路径不能包含 ..')
+    notifyError('本地路径不能包含 ..')
     return
   }
   const payload: StorageProfile = {
@@ -1080,273 +1061,222 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="space-y-3">
-    <div class="flex items-center justify-between">
+    <div class="storage-toolbar flex items-center justify-between gap-3">
       <div class="text-sm text-muted-foreground">支持配置多个存储实例，并可设置默认存储供未指定模块兜底使用</div>
-      <Button type="button" variant="outline" @click="openCreateDialog">新建存储</Button>
+      <el-button type="primary" @click="openCreateDialog">新建存储</el-button>
     </div>
 
-    <div class="rounded border weak-divider overflow-x-auto">
-      <div class="min-w-[1160px] divide-y">
-        <div class="grid grid-cols-[140px_220px_100px_minmax(220px,1fr)_120px_280px] py-2 text-xs text-muted-foreground divide-x divide-[var(--line-weak)] bg-muted/40 dark:bg-muted/20 [&>div]:px-3">
-          <div class="text-center">存储ID</div>
-          <div class="text-center">存储名称</div>
-          <div class="text-center">类型</div>
-          <div class="text-center">路径</div>
-          <div class="text-center">默认</div>
-          <div class="text-center">操作</div>
-        </div>
-        <div
-          v-for="profile in profiles"
-          :key="profile.id"
-          class="grid grid-cols-[140px_220px_100px_minmax(220px,1fr)_120px_280px] py-3 items-center divide-x divide-[var(--line-weak)] [&>div]:px-3"
-        >
+    <el-table
+      :data="profiles"
+      row-key="id"
+      class="app-data-table storage-config-table w-full"
+      stripe
+    >
+      <el-table-column prop="id" label="存储ID" width="120">
+        <template #default="{ row }">
           <div class="min-w-0 flex items-center gap-2">
-            <span class="text-xs text-muted-foreground font-mono truncate" :title="profile.id">{{ profile.id }}</span>
-            <button
-              type="button"
-              class="inline-flex h-6 w-6 items-center justify-center rounded border border-transparent text-muted-foreground hover:text-brand-600 hover:border-brand-200"
-              title="复制存储ID"
-              aria-label="复制存储ID"
-              @click="copyText(profile.id, '存储ID')"
-            >
+            <span class="text-xs text-muted-foreground font-mono truncate" :title="row.id">{{ row.id }}</span>
+            <button type="button" class="storage-icon-action" title="复制存储ID" aria-label="复制存储ID" @click="copyText(row.id, '存储ID')">
               <CopyOutlined class="text-[14px]" />
             </button>
           </div>
-          <div class="min-w-0">
-            <div class="flex items-center gap-2">
-              <div class="text-sm font-medium truncate" :title="profile.name">{{ profile.name }}</div>
-              <button
-                type="button"
-                class="inline-flex h-6 w-6 items-center justify-center rounded border border-transparent text-muted-foreground hover:text-brand-600 hover:border-brand-200 shrink-0"
-                title="复制存储名称"
-                aria-label="复制存储名称"
-                @click="copyText(profile.name, '存储名称')"
-              >
-                <CopyOutlined class="text-[14px]" />
-              </button>
-            </div>
-          </div>
-          <div class="text-sm">{{ profile.provider === 's3' ? 'S3' : '本地' }}</div>
-          <div class="text-sm text-muted-foreground min-w-0">
-            <span
-              v-if="profile.provider === 's3'"
-              class="inline-flex items-center gap-2 max-w-full"
-            >
-              <span
-                class="block truncate"
-                :title="`${profile.s3_bucket}/${profile.s3_object_key_prefix}`"
-              >
-                {{ profile.s3_bucket }}/{{ profile.s3_object_key_prefix }}
-              </span>
-              <button
-                type="button"
-                class="inline-flex h-6 w-6 items-center justify-center rounded border border-transparent text-muted-foreground hover:text-brand-600 hover:border-brand-200 shrink-0"
-                title="复制路径前缀"
-                aria-label="复制路径前缀"
-                @click="copyText(`${profile.s3_bucket}/${profile.s3_object_key_prefix}`, '路径前缀')"
-              >
-                <CopyOutlined class="text-[14px]" />
-              </button>
-            </span>
-            <span v-else class="inline-flex items-center gap-2 max-w-full">
-              <span class="block truncate" :title="`./data/${profile.local_sub_path || 'uploads'}`">./data/{{ profile.local_sub_path || 'uploads' }}</span>
-              <button
-                type="button"
-                class="inline-flex h-6 w-6 items-center justify-center rounded border border-transparent text-muted-foreground hover:text-brand-600 hover:border-brand-200 shrink-0"
-                title="复制路径前缀"
-                aria-label="复制路径前缀"
-                @click="copyText(`./data/${profile.local_sub_path || 'uploads'}`, '路径前缀')"
-              >
-                <CopyOutlined class="text-[14px]" />
-              </button>
-            </span>
-          </div>
-          <div class="flex items-center justify-center">
-            <button
-              type="button"
-              class="inline-flex items-center justify-center h-8 w-8 rounded-full border transition-colors"
-              :class="defaultStorageID === profile.id
-                ? 'border-emerald-300 bg-emerald-100 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 cursor-default pointer-events-none'
-                : 'weak-divider bg-white text-muted-foreground hover:border-emerald-300 hover:text-emerald-700 dark:bg-muted/20 dark:hover:border-emerald-700 dark:hover:text-emerald-300'"
-              :title="defaultStorageID === profile.id ? '默认存储' : '设为默认存储'"
-              :disabled="saving || loading"
-              @click="setDefaultStorage(profile.id)"
-            >
-              <CheckCircleFilled v-if="defaultStorageID === profile.id" class="text-[14px]" />
-              <CheckCircleOutlined v-else class="text-[14px]" />
+        </template>
+      </el-table-column>
+      <el-table-column prop="name" label="存储名称" min-width="160">
+        <template #default="{ row }">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-sm font-medium truncate" :title="row.name">{{ row.name }}</span>
+            <button type="button" class="storage-icon-action shrink-0" title="复制存储名称" aria-label="复制存储名称" @click="copyText(row.name, '存储名称')">
+              <CopyOutlined class="text-[14px]" />
             </button>
           </div>
-          <div class="flex items-center justify-end gap-2">
-          <Button
+        </template>
+      </el-table-column>
+      <el-table-column prop="provider" label="类型" width="90" align="center">
+        <template #default="{ row }">{{ row.provider === 's3' ? 'S3' : '本地' }}</template>
+      </el-table-column>
+      <el-table-column label="路径" width="220">
+        <template #default="{ row }">
+          <span v-if="row.provider === 's3'" class="inline-flex items-center gap-2 max-w-full">
+            <span class="storage-path-text" :title="`${row.s3_bucket}/${row.s3_object_key_prefix}`">{{ row.s3_bucket }}/{{ row.s3_object_key_prefix }}</span>
+            <button type="button" class="storage-icon-action storage-icon-action--path shrink-0" title="复制路径" aria-label="复制路径" @click="copyText(`${row.s3_bucket}/${row.s3_object_key_prefix}`, '路径')">
+              <LinkOutlined class="text-[14px]" />
+            </button>
+          </span>
+          <span v-else class="inline-flex items-center gap-2 max-w-full">
+            <span class="storage-path-text" :title="`./data/${row.local_sub_path || 'uploads'}`">./data/{{ row.local_sub_path || 'uploads' }}</span>
+            <button type="button" class="storage-icon-action storage-icon-action--path shrink-0" title="复制路径" aria-label="复制路径" @click="copyText(`./data/${row.local_sub_path || 'uploads'}`, '路径')">
+              <LinkOutlined class="text-[14px]" />
+            </button>
+          </span>
+        </template>
+      </el-table-column>
+      <el-table-column label="默认" width="88" align="center">
+        <template #default="{ row }">
+          <button
             type="button"
-            variant="outline"
-            size="sm"
-            class="weak-divider bg-muted/40 text-muted-foreground hover:bg-muted hover:border-[var(--line-weak)] dark:bg-muted/20 dark:hover:bg-muted/40"
+            class="storage-default-action inline-flex items-center justify-center h-8 w-8 rounded-full border transition-all"
+            :class="defaultStorageID === row.id ? 'storage-default-action-active cursor-default pointer-events-none' : 'storage-default-action-idle'"
+            :title="defaultStorageID === row.id ? '默认存储' : '设为默认存储'"
             :disabled="saving || loading"
-            @click="handleBrowseClick(profile)"
+            @click="setDefaultStorage(row.id)"
           >
-            浏览
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            class="weak-divider bg-muted/40 text-muted-foreground hover:bg-muted hover:border-[var(--line-weak)] dark:bg-muted/20 dark:hover:bg-muted/40"
-            :disabled="localUploadTesting || saving || loading"
-            @click="handleTestClick(profile)"
-          >
-            {{ localUploadTesting ? '上传中...' : '上传' }}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            class="weak-divider bg-muted/40 text-muted-foreground hover:bg-muted hover:border-[var(--line-weak)] dark:bg-muted/20 dark:hover:bg-muted/40"
-            :disabled="saving || loading"
-            @click="openEditDialog(profile)"
-          >
-            编辑
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            class="border-red-200 bg-red-50 text-red-600 hover:bg-red-100 hover:border-red-300"
-            :disabled="saving || loading"
-            @click="openDeleteConfirm(profile)"
-          >
-            删除
-          </Button>
-          </div>
-        </div>
-      </div>
-    </div>
+            <StarFilled v-if="defaultStorageID === row.id" class="text-[15px]" />
+            <StarOutlined v-else class="text-[15px]" />
+          </button>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="220" align="center" fixed="right">
+        <template #default="{ row }">
+          <AppRowActions :actions="[
+            { key: 'edit', label: '编辑', kind: 'write', permission: 'system:settings:edit', disabled: saving || loading, onClick: () => openEditDialog(row) },
+            { key: 'delete', label: '删除', kind: 'write', permission: 'system:settings:edit', danger: true, disabled: saving || loading, onClick: () => openDeleteConfirm(row) },
+            { key: 'upload', label: localUploadTesting ? '上传中' : '上传', kind: 'write', permission: 'system:settings:edit', disabled: localUploadTesting || saving || loading, loading: localUploadTesting, onClick: () => handleTestClick(row) },
+            { key: 'browse', label: '浏览', kind: 'view', permission: 'system:settings:view', disabled: saving || loading, onClick: () => handleBrowseClick(row) }
+          ]" />
+        </template>
+      </el-table-column>
+    </el-table>
 
-    <Dialog :open="editorOpen" @update:open="(value) => { editorOpen = value }">
-      <DialogContent class="max-w-[760px]">
-        <DialogHeader>
-          <DialogTitle>{{ editingProfileId ? '编辑存储配置' : '新建存储配置' }}</DialogTitle>
-        </DialogHeader>
-        <div class="space-y-3">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-            <Input v-model="editor.name" placeholder="存储名称" />
-          </div>
-          <div class="flex items-center gap-3">
-            <div class="text-sm whitespace-nowrap">上传文件名前缀</div>
-            <Input v-model="editor.upload_file_prefix" class="w-[240px]" placeholder="默认 upload" />
-          </div>
-          <div class="space-y-2">
-            <div class="text-sm">存储类型</div>
-            <div class="flex items-center gap-2">
-              <button
-                type="button"
-                class="px-3 py-1.5 text-sm rounded border transition-colors"
-                :class="editor.provider === 'local' ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/30' : 'weak-divider'"
-                @click="editor.provider = 'local'"
-              >
-                本地
-              </button>
-              <button
-                type="button"
-                class="px-3 py-1.5 text-sm rounded border transition-colors"
-                :class="editor.provider === 's3' ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/30' : 'weak-divider'"
-                @click="editor.provider = 's3'"
-              >
-                S3
-              </button>
+    <AppFormDrawer
+      v-model="editorOpen"
+      :title="editingProfileId ? '编辑存储配置' : '新建存储配置'"
+      size="min(760px, 96vw)"
+      confirm-text="保存"
+      :loading="saving"
+      @confirm="applyEditor"
+    >
+        <div class="storage-profile-dialog-body">
+          <section class="storage-profile-section">
+            <div class="settings-card-heading">
+              <div class="settings-card-title">存储配置</div>
+              <div class="settings-card-description">填写基本信息，并选择 Provider 配置对应的路径或连接凭据。</div>
             </div>
-          </div>
-
-          <div v-if="editor.provider === 'local'" class="space-y-3">
-            <div class="space-y-2">
-              <div class="text-sm">本地路径</div>
-              <div class="flex items-center gap-2">
-                <div class="px-3 py-2 text-sm rounded border weak-divider bg-muted/40 text-muted-foreground dark:bg-muted/20">./data/</div>
-                <Input v-model="editor.local_sub_path" placeholder="例如 uploads/oidc" />
-                <Button
+            <div class="storage-inline-fields">
+              <div class="app-form-field storage-profile-inline-field">
+                <label class="app-form-label">存储名称</label>
+                <Input v-model="editor.name" placeholder="请输入存储名称" />
+              </div>
+              <div class="app-form-field storage-profile-inline-field">
+                <label class="app-form-label">上传文件名前缀</label>
+                <Input v-model="editor.upload_file_prefix" placeholder="默认 upload" />
+              </div>
+            </div>
+            <div class="storage-profile-provider-panel">
+              <div class="settings-card-heading storage-provider-heading"><div class="settings-card-title">Provider / 连接配置</div><div class="settings-card-description">选择存储类型并填写对应配置。</div></div>
+              <div class="storage-profile-tabs" role="tablist" aria-label="存储类型">
+                <button
+                  id="storage-provider-local-tab"
                   type="button"
-                  variant="outline"
-                  size="icon"
+                  role="tab"
+                  class="storage-profile-tab"
+                  :class="editor.provider === 'local' ? 'storage-profile-tab-active' : ''"
+                  :aria-selected="editor.provider === 'local'"
+                  aria-controls="storage-provider-local-panel"
+                  @click="editor.provider = 'local'"
+                >
+                  本地存储
+                </button>
+                <button
+                  id="storage-provider-s3-tab"
+                  type="button"
+                  role="tab"
+                  class="storage-profile-tab"
+                  :class="editor.provider === 's3' ? 'storage-profile-tab-active' : ''"
+                  :aria-selected="editor.provider === 's3'"
+                  aria-controls="storage-provider-s3-panel"
+                  @click="editor.provider = 's3'"
+                >
+                  S3 存储
+                </button>
+              </div>
+
+            <div
+              v-if="editor.provider === 'local'"
+              id="storage-provider-local-panel"
+              class="storage-profile-subsection"
+              role="tabpanel"
+              aria-labelledby="storage-provider-local-tab"
+            >
+            <div class="app-form-field">
+              <label class="app-form-label">本地路径</label>
+              <div class="storage-local-path-control">
+                <div class="storage-prefix-chip">./data/</div>
+                <Input v-model="editor.local_sub_path" placeholder="例如 uploads/oidc" />
+                <el-button
+                  type="button"
+                  text
                   title="浏览目录"
-                  class="border-brand-200 bg-brand-50 text-brand-600 hover:bg-brand-100 hover:border-brand-300 dark:border-brand-700/60 dark:bg-brand-900/30 dark:text-brand-300 dark:hover:bg-brand-900/40"
+                  aria-label="浏览本地目录"
+                  class="storage-folder-button"
                   @click="openLocalDirDialog"
                 >
                   <FolderOpenOutlined class="text-[16px]" />
-                </Button>
+                </el-button>
               </div>
-              <div class="flex items-center gap-2">
-                <div class="text-xs text-muted-foreground">最终目录：{{ localPathPreview }}</div>
-                <span
-                  v-if="localPathWillCreate"
-                  class="px-1.5 py-0.5 text-[10px] rounded border border-emerald-200 bg-emerald-50 text-emerald-600"
-                >
-                  目录将自动创建
-                </span>
-              </div>
-              <div v-if="hasInvalidLocalPathSegment" class="text-xs text-red-500">路径不能包含 ..，保存时会拦截</div>
+              <div class="app-form-help">路径会拼接在 ./data/ 下，保存时自动创建不存在的目录。</div>
+              <div v-if="hasInvalidLocalPathSegment" class="app-form-error">路径不能包含 ..，保存时会拦截</div>
             </div>
           </div>
 
-          <div v-if="editor.provider === 's3'" class="space-y-3">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <Input v-model="editor.s3_endpoint" placeholder="Endpoint" />
-              <Input v-model="editor.s3_region" placeholder="Region" />
-              <Input v-model="editor.s3_bucket" placeholder="Bucket" />
-              <Input v-model="editor.s3_object_key_prefix" placeholder="Object Prefix" />
-              <Input v-model="editor.s3_access_key" placeholder="Access Key" />
-              <Input v-model="editor.s3_secret_key" placeholder="Secret Key" />
-              <Input v-model="editor.s3_public_base_url" placeholder="Public URL (Optional)" />
-            </div>
-            <div class="space-y-2">
-              <div class="text-sm">Use HTTPS</div>
-              <div class="flex items-center gap-2">
-                <button
-                  type="button"
-                  class="px-3 py-1.5 text-sm rounded border transition-colors"
-                  :class="editor.s3_use_ssl ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/30' : 'weak-divider'"
-                  @click="editor.s3_use_ssl = true"
-                >
-                  开启
-                </button>
-                <button
-                  type="button"
-                  class="px-3 py-1.5 text-sm rounded border transition-colors"
-                  :class="!editor.s3_use_ssl ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/30' : 'weak-divider'"
-                  @click="editor.s3_use_ssl = false"
-                >
-                  关闭
-                </button>
+            <div
+              v-if="editor.provider === 's3'"
+              id="storage-provider-s3-panel"
+              class="storage-profile-subsection"
+              role="tabpanel"
+              aria-labelledby="storage-provider-s3-tab"
+            >
+            <div class="storage-s3-fields">
+              <div class="app-form-field storage-s3-inline-field">
+                <label class="app-form-label">服务地址</label>
+                <Input v-model="editor.s3_endpoint" placeholder="请输入 S3 服务地址" />
+              </div>
+              <div class="app-form-field storage-s3-inline-field">
+                <label class="app-form-label">区域</label>
+                <Input v-model="editor.s3_region" placeholder="请输入区域，可选" />
+              </div>
+              <div class="app-form-field storage-s3-inline-field">
+                <label class="app-form-label">存储桶</label>
+                <Input v-model="editor.s3_bucket" placeholder="请输入存储桶名称" />
+              </div>
+              <div class="app-form-field storage-s3-inline-field">
+                <label class="app-form-label">对象前缀</label>
+                <Input v-model="editor.s3_object_key_prefix" placeholder="请输入对象路径前缀" />
+              </div>
+              <div class="app-form-field storage-s3-inline-field">
+                <label class="app-form-label">访问密钥</label>
+                <Input v-model="editor.s3_access_key" placeholder="请输入 Access Key" />
+              </div>
+              <div class="app-form-field storage-s3-inline-field">
+                <label class="app-form-label">密钥</label>
+                <Input v-model="editor.s3_secret_key" placeholder="请输入 Secret Key" />
+              </div>
+              <div class="app-form-field storage-s3-inline-field storage-s3-inline-field-wide">
+                <label class="app-form-label">公开地址</label>
+                <Input v-model="editor.s3_public_base_url" placeholder="请输入公开访问地址，可选" />
               </div>
             </div>
-            <div class="space-y-2">
-              <div class="text-sm">Proxy Public Read via Backend</div>
-              <div class="flex items-center gap-2">
-                <button
-                  type="button"
-                  class="px-3 py-1.5 text-sm rounded border transition-colors"
-                  :class="editor.s3_proxy_public_read ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/30' : 'weak-divider'"
-                  @click="editor.s3_proxy_public_read = true"
-                >
-                  开启
-                </button>
-                <button
-                  type="button"
-                  class="px-3 py-1.5 text-sm rounded border transition-colors"
-                  :class="!editor.s3_proxy_public_read ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/30' : 'weak-divider'"
-                  @click="editor.s3_proxy_public_read = false"
-                >
-                  关闭
-                </button>
+            <div class="storage-s3-switches">
+              <div class="app-form-field storage-switch-field">
+                <label class="app-form-label" for="storage-s3-use-ssl">使用 HTTPS</label>
+                <div class="storage-switch-control">
+                  <el-switch id="storage-s3-use-ssl" v-model="editor.s3_use_ssl" />
+                  <span>{{ editor.s3_use_ssl ? '已开启' : '已关闭' }}</span>
+                </div>
+              </div>
+              <div class="app-form-field storage-switch-field">
+                <label class="app-form-label" for="storage-s3-proxy-public-read">代理公开读取</label>
+                <div class="storage-switch-control">
+                  <el-switch id="storage-s3-proxy-public-read" v-model="editor.s3_proxy_public_read" />
+                  <span>{{ editor.s3_proxy_public_read ? '已开启' : '已关闭' }}</span>
+                </div>
               </div>
             </div>
           </div>
+          </div>
+          </section>
         </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" :disabled="saving" @click="editorOpen = false">取消</Button>
-          <Button type="button" :disabled="saving" @click="applyEditor">{{ saving ? '保存中...' : '保存并生效' }}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </AppFormDrawer>
 
     <Dialog :open="deleteConfirmOpen" @update:open="(value) => value ? (deleteConfirmOpen = true) : closeDeleteConfirm()">
       <DialogContent class="w-[420px] max-w-[90vw]">
@@ -1363,7 +1293,6 @@ onBeforeUnmount(() => {
             v-model="deleteConfirmInput"
             :max-length="100"
             placeholder="请输入存储名称"
-            class="confirm-delete-input"
           />
           <div v-if="showDeleteError" class="text-xs text-red-500">名称不匹配，请重新输入</div>
         </div>
@@ -1375,197 +1304,114 @@ onBeforeUnmount(() => {
     </Dialog>
 
     <Dialog :open="browseDialogOpen" @update:open="(value) => { browseDialogOpen = value }">
-      <DialogContent :class="browseDialogWidthClass">
+      <DialogContent class="app-file-browser-dialog">
         <DialogHeader>
           <DialogTitle>{{ browseDialogTitle }}</DialogTitle>
         </DialogHeader>
-        <div class="space-y-3">
-          <div class="text-sm text-muted-foreground">
-            当前存储：{{ browseProfileName }}（{{ browseMode === 's3' ? 'S3' : '本地' }} / {{ browseProfileId }}）
-          </div>
-          <div class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 text-sm text-muted-foreground">
-            <span>{{ browseRootLabel }}</span>
-            <div class="min-w-0 overflow-x-auto whitespace-nowrap pb-1">
-              <button
-                v-for="(crumb, index) in browseBreadcrumbs"
-                :key="`${crumb.path || 'browse-root'}-${index}`"
-                type="button"
-                class="inline-flex items-center gap-1 hover:text-brand-600 mr-1"
-                :disabled="browseLoading"
-                @click="openBrowseBreadcrumb(crumb.path)"
-              >
-                <RightOutlined v-if="index > 0" class="text-[13px]" />
-                <FolderOutlined v-if="index === 0" class="text-[13px]" />
-                <span class="max-w-[240px] truncate align-bottom">{{ crumb.label }}</span>
-              </button>
+        <div class="app-file-browser">
+          <section class="app-file-browser-metadata" aria-label="当前存储信息">
+            <span class="app-file-browser-metadata__icon" aria-hidden="true">
+              <CloudServerOutlined />
+            </span>
+            <div class="app-file-browser-metadata__copy" :title="browseProfileName || ''">
+              <strong>{{ browseProfileName || '-' }}</strong>
+              <small>{{ browseMode === 's3' ? 'S3' : '本地' }} · {{ browseProfileId || '-' }}</small>
             </div>
-          </div>
-          <div class="grid grid-cols-[auto_minmax(240px,1fr)_auto_auto] items-center gap-2">
-            <Button type="button" variant="outline" size="sm" :disabled="!browseCurrentPath || browseLoading" @click="openBrowseParent">
-              返回上级
-            </Button>
-            <Input v-model="browseKeyword" class="h-8 w-full min-w-[240px]" placeholder="按名称筛选文件/目录" />
-            <div class="inline-flex items-center gap-1 rounded border weak-divider p-1">
-              <button
-                type="button"
-                class="px-2 py-1 text-xs rounded"
-                :class="browseViewMode === 'list' ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-300' : 'text-muted-foreground'"
-                @click="browseViewMode = 'list'"
-              >
-                列表
+          </section>
+          <div class="app-file-browser-controls">
+            <div class="app-file-browser-controls__navigation app-file-browser-navigation-compact">
+              <button class="storage-local-dir-back" type="button" :disabled="!browseCurrentPath || browseLoading" @click="openBrowseParent">
+                <ArrowLeftOutlined />
+                <span>上一级</span>
               </button>
-              <button
-                type="button"
-                class="px-2 py-1 text-xs rounded"
-                :class="browseViewMode === 'thumb' ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-300' : 'text-muted-foreground'"
-                @click="browseViewMode = 'thumb'"
-              >
-                缩略图
-              </button>
-            </div>
-            <div
-              class="inline-flex w-[132px] items-center gap-1 rounded border weak-divider p-1 transition-opacity"
-              :class="browseViewMode === 'thumb' ? 'opacity-100' : 'opacity-0 pointer-events-none'"
-            >
-              <button
-                type="button"
-                class="px-2 py-1 text-xs rounded"
-                :class="browseThumbSize === 'sm' ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-300' : 'text-muted-foreground'"
-                @click="browseThumbSize = 'sm'"
-              >
-                小
-              </button>
-              <button
-                type="button"
-                class="px-2 py-1 text-xs rounded"
-                :class="browseThumbSize === 'md' ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-300' : 'text-muted-foreground'"
-                @click="browseThumbSize = 'md'"
-              >
-                中
-              </button>
-              <button
-                type="button"
-                class="px-2 py-1 text-xs rounded"
-                :class="browseThumbSize === 'lg' ? 'bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-300' : 'text-muted-foreground'"
-                @click="browseThumbSize = 'lg'"
-              >
-                大
-              </button>
-            </div>
-          </div>
-          <div v-if="browseViewMode === 'list'" class="rounded border weak-divider max-h-[360px] overflow-y-auto divide-y">
-            <div
-              v-for="item in filteredBrowseDirectories"
-              :key="item.relative_path"
-              class="flex items-center gap-3 px-3 py-2 hover:bg-muted/70 dark:hover:bg-muted/30 cursor-pointer"
-              @click="openBrowseChild(item)"
-            >
-              <div class="inline-flex h-7 w-7 items-center justify-center rounded border border-brand-200 bg-brand-50 text-brand-600 dark:border-brand-700/60 dark:bg-brand-900/30 dark:text-brand-300 shrink-0">
-                <FolderOutlined class="text-[16px]" />
-              </div>
-              <div class="text-sm min-w-0">
-                <div class="truncate font-medium">{{ item.name }}</div>
-                <div class="text-[11px] text-muted-foreground truncate">{{ item.relative_path }}</div>
-              </div>
-            </div>
-            <div
-              v-for="file in filteredBrowseFiles"
-              :key="file.object_key || file.relative_path"
-              class="flex items-center justify-between gap-3 px-3 py-2 hover:bg-muted/70 dark:hover:bg-muted/30"
-            >
-              <div class="min-w-0 text-sm">
-                <div class="truncate font-medium">{{ file.name }}</div>
-                <div
-                  class="text-[11px] text-muted-foreground truncate"
-                  :title="browseMode === 's3' ? (file.object_key || file.relative_path) : file.relative_path"
-                >
-                  {{ browseMode === 's3' ? (file.object_key || file.relative_path) : file.relative_path }}
-                </div>
-              </div>
-              <div class="flex items-center gap-2 shrink-0">
-                <span v-if="typeof file.size === 'number'" class="text-[11px] text-muted-foreground">{{ formatFileSize(file.size || 0) }}</span>
-                <Button type="button" variant="outline" size="sm" :disabled="browseMode === 's3' && !file.public_url" @click="previewBrowseFile(file)">预览</Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  @click="copyText(file.public_url || file.object_key || file.relative_path, file.public_url ? '文件链接' : (browseMode === 's3' ? '对象键' : '相对路径'))"
-                >
-                  复制
-                </Button>
-                <Button type="button" variant="outline" size="sm" class="text-red-600 border-red-200 hover:bg-red-50" @click="askDeleteBrowseFile(file)">删除</Button>
-              </div>
-            </div>
-            <div v-if="!browseLoading && filteredBrowseDirectories.length === 0 && filteredBrowseFiles.length === 0" class="px-3 py-6 text-sm text-muted-foreground text-center">
-              当前路径下暂无内容
-            </div>
-          </div>
-          <div v-else class="rounded border weak-divider max-h-[360px] overflow-y-auto p-3 space-y-3">
-            <div v-if="filteredBrowseDirectories.length > 0" class="grid grid-cols-2 md:grid-cols-3 gap-2">
-              <button
-                v-for="item in filteredBrowseDirectories"
-                :key="`thumb-dir-${item.relative_path}`"
-                type="button"
-                class="rounded border weak-divider px-3 py-2 text-left hover:bg-muted/70 dark:hover:bg-muted/30"
-                @click="openBrowseChild(item)"
-              >
-                <div class="inline-flex h-8 w-8 items-center justify-center rounded border border-brand-200 bg-brand-50 text-brand-600 dark:border-brand-700/60 dark:bg-brand-900/30 dark:text-brand-300">
-                  <FolderOutlined class="text-[16px]" />
-                </div>
-                <div class="mt-1 text-sm truncate font-medium">{{ item.name }}</div>
-              </button>
-            </div>
-            <div :class="browseThumbGridClass">
-              <div
-                v-for="file in browseThumbFiles"
-                :key="`thumb-file-${file.object_key || file.relative_path}`"
-                class="rounded border weak-divider p-2 space-y-2"
-              >
-                <button
-                  type="button"
-                  :class="browseThumbPreviewClass"
-                  :disabled="!file.can_preview"
-                  @click="previewBrowseFile(file)"
-                >
-                  <img
-                    v-if="file.is_image && file.can_preview"
-                    :src="file.preview_url"
-                    class="w-full h-full object-cover"
-                    :alt="file.name"
+              <nav class="app-file-browser-breadcrumb" aria-label="当前路径">
+                <div class="app-file-browser-breadcrumb__track">
+                  <button
+                    v-for="(crumb, index) in browseBreadcrumbs"
+                    :key="`${crumb.path || 'browse-root'}-${index}`"
+                    type="button"
+                    class="storage-breadcrumb-button"
+                    :disabled="browseLoading"
+                    @click="openBrowseBreadcrumb(crumb.path)"
                   >
-                  <FolderOpenOutlined v-else class="text-[28px] text-muted-foreground" />
-                </button>
-                <div class="text-xs">
-                  <div class="truncate font-medium" :title="file.name">{{ file.name }}</div>
-                  <div class="text-muted-foreground truncate" :title="file.label">{{ file.label }}</div>
+                    <RightOutlined v-if="index > 0" />
+                    <FolderOutlined v-if="index === 0" />
+                    <span>{{ crumb.label }}</span>
+                  </button>
                 </div>
-                <div class="flex items-center justify-between gap-1">
-                  <Button type="button" variant="outline" size="sm" class="h-7 px-2" :disabled="browseMode === 's3' && !file.public_url" @click="previewBrowseFile(file)">预览</Button>
-                  <Button type="button" variant="outline" size="sm" class="h-7 px-2" @click="copyText(file.public_url || file.object_key || file.relative_path, file.public_url ? '文件链接' : (browseMode === 's3' ? '对象键' : '相对路径'))">复制</Button>
-                  <Button type="button" variant="outline" size="sm" class="h-7 px-2 text-red-600 border-red-200 hover:bg-red-50" @click="askDeleteBrowseFile(file)">删除</Button>
+              </nav>
+            </div>
+            <Input v-model="browseKeyword" class="app-file-browser-toolbar__search" placeholder="按名称筛选文件/目录" />
+          </div>
+          <div class="storage-browser-list app-file-browser-content">
+            <div class="app-file-browser-content-toolbar">
+              <div class="app-file-browser-content-toolbar__actions">
+                <div class="app-segmented app-file-browser-toolbar__view" role="group" aria-label="浏览视图">
+                  <button type="button" class="storage-segment-button" :class="browseViewMode === 'list' ? 'storage-segment-button-active' : 'storage-segment-button-idle'" :aria-pressed="browseViewMode === 'list'" @click="browseViewMode = 'list'">列表</button>
+                  <button type="button" class="storage-segment-button" :class="browseViewMode === 'thumb' ? 'storage-segment-button-active' : 'storage-segment-button-idle'" :aria-pressed="browseViewMode === 'thumb'" @click="browseViewMode = 'thumb'">缩略图</button>
+                </div>
+                <div v-if="browseViewMode === 'thumb' && !browseLoading && hasBrowseContent" class="app-segmented app-file-browser-toolbar__size" role="group" aria-label="缩略图密度">
+                  <button v-for="size in (['sm', 'md', 'lg'] as const)" :key="size" type="button" class="storage-segment-button" :class="browseThumbSize === size ? 'storage-segment-button-active' : 'storage-segment-button-idle'" :aria-pressed="browseThumbSize === size" @click="browseThumbSize = size">{{ size === 'sm' ? '紧凑' : size === 'md' ? '标准' : '宽松' }}</button>
                 </div>
               </div>
             </div>
-            <div v-if="!browseLoading && filteredBrowseDirectories.length === 0 && browseThumbFiles.length === 0" class="px-3 py-6 text-sm text-muted-foreground text-center">
-              当前路径下暂无内容
+            <div v-if="browseLoading" class="app-file-browser-state" role="status">正在读取当前目录…</div>
+            <template v-else-if="browseViewMode === 'list'">
+              <button v-for="item in filteredBrowseDirectories" :key="item.relative_path" type="button" class="storage-browser-row app-file-browser-row app-file-browser-row--directory" @click="openBrowseChild(item)">
+                <span class="app-file-browser-row-main">
+                  <span class="app-file-browser-folder-icon"><FolderOutlined /></span>
+                  <span class="app-file-browser-row-copy"><strong>{{ item.name }}</strong><small v-if="item.relative_path !== item.name">{{ item.relative_path }}</small></span>
+                </span>
+              </button>
+              <div v-for="file in filteredBrowseFiles" :key="file.object_key || file.relative_path" class="storage-browser-row app-file-browser-row">
+                <div class="app-file-browser-row-main">
+                  <span class="app-file-browser-row-copy"><strong>{{ file.name }}</strong><small :title="browseMode === 's3' ? (file.object_key || file.relative_path) : file.relative_path">{{ browseMode === 's3' ? (file.object_key || file.relative_path) : file.relative_path }}</small></span>
+                </div>
+                <div class="app-file-browser-row-actions">
+                  <span v-if="typeof file.size === 'number'" class="app-file-browser-file-size">{{ formatFileSize(file.size || 0) }}</span>
+                  <Button type="button" variant="outline" size="sm" :disabled="browseMode === 's3' && !file.public_url" @click="previewBrowseFile(file)">预览</Button>
+                  <Button type="button" variant="outline" size="sm" @click="copyText(file.public_url || file.object_key || file.relative_path, file.public_url ? '文件链接' : (browseMode === 's3' ? '对象键' : '相对路径'))">复制</Button>
+                  <Button type="button" variant="destructive" size="sm" @click="askDeleteBrowseFile(file)">删除</Button>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <div v-if="filteredBrowseDirectories.length" :class="browseDirectoryGridClass">
+                <button v-for="item in filteredBrowseDirectories" :key="`thumb-dir-${item.relative_path}`" type="button" class="storage-thumb-dir-card app-file-browser-directory-card" @click="openBrowseChild(item)">
+                  <span class="app-file-browser-folder-icon"><FolderOutlined /></span><strong>{{ item.name }}</strong>
+                </button>
+              </div>
+              <div :class="browseThumbGridClass">
+                <div v-for="file in browseThumbFiles" :key="`thumb-file-${file.object_key || file.relative_path}`" class="storage-thumb-file-card app-file-browser-card">
+                  <button type="button" :class="browseThumbPreviewClass" :disabled="!file.can_preview" @click="previewBrowseFile(file)">
+                    <img v-if="file.is_image && file.can_preview" :src="file.preview_url" :alt="file.name"><FolderOpenOutlined v-else />
+                  </button>
+                  <div class="app-file-browser-card-copy"><strong :title="file.name">{{ file.name }}</strong><small :title="file.label">{{ file.label }}</small></div>
+                  <div class="app-file-browser-card-actions">
+                    <Button type="button" variant="outline" size="sm" :disabled="browseMode === 's3' && !file.public_url" @click="previewBrowseFile(file)">预览</Button>
+                    <Button type="button" variant="outline" size="sm" @click="copyText(file.public_url || file.object_key || file.relative_path, file.public_url ? '文件链接' : (browseMode === 's3' ? '对象键' : '相对路径'))">复制</Button>
+                    <Button type="button" variant="destructive" size="sm" @click="askDeleteBrowseFile(file)">删除</Button>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <div v-if="!browseLoading && filteredBrowseDirectories.length === 0 && filteredBrowseFiles.length === 0" class="app-file-browser-state app-file-browser-state--empty">
+              <FolderOpenOutlined /><strong>当前路径下没有内容</strong><span>可返回上级目录或调整筛选条件</span>
             </div>
           </div>
         </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" @click="browseDialogOpen = false">关闭</Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
 
     <Dialog :open="filePreviewDialogOpen" @update:open="(value) => { filePreviewDialogOpen = value }">
-      <DialogContent class="!w-[92vw] !max-w-[600px]">
+      <DialogContent class="app-nested-dialog app-file-preview-dialog !w-[min(92vw,760px)] !max-w-[760px]">
         <DialogHeader>
           <DialogTitle>文件预览</DialogTitle>
         </DialogHeader>
-        <div class="space-y-2">
+        <div class="app-file-preview-body">
           <div class="text-sm font-medium truncate" :title="filePreviewName">{{ filePreviewName }}</div>
           <div class="text-xs text-muted-foreground truncate" :title="filePreviewPath">{{ filePreviewPath }}</div>
-          <div class="rounded border weak-divider bg-muted/40 dark:bg-muted/20 h-[68vh] overflow-hidden">
+          <div class="storage-preview-frame overflow-hidden">
             <img
               v-if="filePreviewIsImage"
               :src="filePreviewUrl"
@@ -1579,32 +1425,36 @@ onBeforeUnmount(() => {
             />
           </div>
         </div>
-        <DialogFooter class="flex-row items-center justify-end gap-2">
-          <Button type="button" variant="outline" :disabled="!filePreviewHasPrev" @click="movePreviewBy(-1)">上一张</Button>
-          <Button type="button" variant="outline" :disabled="!filePreviewHasNext" @click="movePreviewBy(1)">下一张</Button>
-          <span v-if="filePreviewProgressText" class="text-xs text-muted-foreground px-1 min-w-[44px] text-center whitespace-nowrap">{{ filePreviewProgressText }}</span>
-          <Button type="button" variant="outline" @click="copyText(filePreviewUrl, '预览地址')">复制地址</Button>
-          <Button type="button" variant="outline" @click="openPreviewInNewTab">新标签打开</Button>
-          <Button type="button" @click="filePreviewDialogOpen = false">关闭</Button>
+        <DialogFooter class="app-file-preview-footer">
+          <div class="app-file-preview-footer__navigation">
+            <Button type="button" variant="outline" :disabled="!filePreviewHasPrev" @click="movePreviewBy(-1)">上一张</Button>
+            <span v-if="filePreviewProgressText">{{ filePreviewProgressText }}</span>
+            <Button type="button" variant="outline" :disabled="!filePreviewHasNext" @click="movePreviewBy(1)">下一张</Button>
+          </div>
+          <div class="app-file-preview-footer__actions">
+            <Button type="button" variant="outline" @click="copyText(filePreviewUrl, '预览地址')">复制地址</Button>
+            <Button type="button" variant="outline" @click="openPreviewInNewTab">新标签打开</Button>
+            <Button type="button" @click="filePreviewDialogOpen = false">关闭</Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
 
     <Dialog :open="fileDeleteConfirmOpen" @update:open="(value) => { fileDeleteConfirmOpen = value }">
-      <DialogContent class="max-w-[480px]">
+      <DialogContent class="app-nested-dialog max-w-[480px]">
         <DialogHeader>
           <DialogTitle>确认删除文件</DialogTitle>
         </DialogHeader>
         <div class="space-y-2 text-sm">
           <div class="text-foreground">该操作不可恢复，确认要删除以下文件吗？</div>
-          <div class="rounded border weak-divider bg-muted/40 dark:bg-muted/20 px-3 py-2">
+          <div class="storage-danger-summary px-3 py-2">
             <div class="font-medium truncate" :title="fileDeleteTargetName">{{ fileDeleteTargetName }}</div>
             <div class="text-xs text-muted-foreground truncate" :title="fileDeleteTargetObjectKey || fileDeleteTargetPath">{{ fileDeleteTargetObjectKey || fileDeleteTargetPath }}</div>
           </div>
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" :disabled="fileDeleting" @click="fileDeleteConfirmOpen = false">取消</Button>
-          <Button type="button" :disabled="fileDeleting" class="bg-red-600 hover:bg-red-700 text-white" @click="confirmDeleteBrowseFile">
+          <Button type="button" variant="destructive" :disabled="fileDeleting" @click="confirmDeleteBrowseFile">
             {{ fileDeleting ? '删除中...' : '确认删除' }}
           </Button>
         </DialogFooter>
@@ -1612,133 +1462,187 @@ onBeforeUnmount(() => {
     </Dialog>
 
     <Dialog :open="localUploadTestOpen" @update:open="(value) => value ? (localUploadTestOpen = true) : closeLocalUploadTest()">
-      <DialogContent class="max-w-[520px]">
+      <DialogContent class="storage-upload-dialog">
         <DialogHeader>
           <DialogTitle>存储上传</DialogTitle>
         </DialogHeader>
-        <div class="space-y-3">
-          <div class="text-sm text-muted-foreground">
-            当前存储：{{ localUploadTestProfile?.name }}（{{ localUploadTestProfile?.provider === 's3' ? 'S3' : '本地' }} / {{ localUploadTestProfile?.id }}）
-          </div>
-          <div class="flex items-center gap-2">
-            <button
-              type="button"
-              class="inline-flex items-center gap-1.5 text-sm text-foreground"
-              :title="localUploadDeleteAfter ? '上传成功后将立即删除该文件' : '上传成功后保留该文件'"
-              @click="localUploadDeleteAfter = !localUploadDeleteAfter"
-            >
-              <CheckCircleFilled v-if="localUploadDeleteAfter" class="text-[16px] text-brand-600" />
-              <CheckCircleOutlined v-else class="text-[16px] text-muted-foreground" />
-              <span>上传后立即删除</span>
-            </button>
-          </div>
+        <div class="storage-upload-panel">
+          <section class="storage-upload-metadata" aria-label="当前存储信息">
+            <span class="storage-upload-metadata__icon" aria-hidden="true">
+              <CloudServerOutlined />
+            </span>
+            <div class="storage-upload-metadata__copy" :title="localUploadTestProfile?.name">
+              <strong>{{ localUploadTestProfile?.name }}</strong>
+              <small>{{ localUploadTestProfile?.provider === 's3' ? 'S3' : '本地' }} · {{ localUploadTestProfile?.id }}</small>
+            </div>
+          </section>
+
           <input
             ref="localUploadFileInputRef"
             type="file"
-            class="w-full text-sm file:mr-3 file:px-3 file:py-1.5 file:rounded file:border file:bg-muted file:text-foreground"
+            class="hidden"
+            tabindex="-1"
+            aria-hidden="true"
             @change="handleLocalUploadFileChange"
           />
-          <div v-if="localUploadTestFile" class="flex items-center justify-between gap-2">
-            <div class="text-xs text-muted-foreground">
-              已选文件：{{ localUploadSelectedFileName }}（{{ localUploadSelectedFileSize }}）
-            </div>
-            <Button type="button" variant="outline" size="sm" :disabled="localUploadTesting" @click="clearLocalUploadFile">
-              重新选择
+          <div class="storage-upload-controls" :class="{ 'storage-upload-controls--delete-active': localUploadDeleteAfter }">
+            <button
+              type="button"
+              class="storage-upload-option"
+              :class="{ 'storage-upload-option--active': localUploadDeleteAfter }"
+              :aria-pressed="localUploadDeleteAfter"
+              :title="localUploadDeleteAfter ? '上传成功后将立即删除该文件' : '上传成功后保留该文件'"
+              @click="localUploadDeleteAfter = !localUploadDeleteAfter"
+            >
+              <span class="storage-upload-option__indicator" aria-hidden="true"></span>
+              <span><strong>上传后立即删除</strong><small>用于仅验证写入能力的测试；开启后，上传成功的文件不会保留。</small></span>
+            </button>
+            <Button class="storage-upload-file-button" type="button" variant="outline" size="sm" :disabled="localUploadTesting" :aria-label="localUploadTestFile ? '重新选择上传文件' : '选择上传文件'" @click="localUploadFileInputRef?.click()">
+              <FolderOpenOutlined aria-hidden="true" />
+              {{ localUploadTestFile ? '重新选择' : '选择文件' }}
             </Button>
           </div>
-          <div v-if="localUploadLastLocation" class="flex items-start gap-2 min-w-0">
-            <div class="text-xs text-muted-foreground min-w-0 flex-1 break-all leading-5" :title="localUploadLastLocation">上传地址：{{ localUploadLastLocation }}</div>
-            <Button type="button" variant="outline" size="sm" class="shrink-0" :disabled="localUploadTesting" @click="copyText(localUploadLastLocation, '上传地址')">
+
+          <div v-if="localUploadTestFile" class="storage-upload-selected-file" aria-live="polite">
+            <FileOutlined aria-hidden="true" />
+            <strong :title="localUploadSelectedFileName">{{ localUploadSelectedFileName }}</strong>
+            <small>{{ localUploadSelectedFileSize }}</small>
+          </div>
+
+          <section v-if="localUploadLastLocation" class="storage-upload-result" aria-live="polite">
+            <div class="storage-upload-result__copy">
+              <strong>上传成功地址</strong>
+              <span :title="localUploadLastLocation">{{ localUploadLastLocation }}</span>
+            </div>
+            <Button type="button" variant="outline" size="sm" :disabled="localUploadTesting" @click="copyText(localUploadLastLocation, '上传地址')">
+              <CopyOutlined aria-hidden="true" />
               复制地址
             </Button>
-          </div>
-          <div class="text-xs text-muted-foreground">可在此手动上传文件，上传成功表示当前存储可正常写入</div>
+          </section>
         </div>
-        <DialogFooter>
-          <span v-if="localUploadAutoCloseCountdown > 0" class="mr-auto text-xs text-muted-foreground">
+        <DialogFooter class="storage-upload-footer">
+          <span v-if="localUploadAutoCloseCountdown > 0" class="storage-upload-footer__status" role="status">
             上传成功，{{ localUploadAutoCloseCountdown }} 秒后自动关闭
           </span>
-          <Button type="button" variant="outline" :disabled="localUploadTesting" @click="closeLocalUploadTest">取消</Button>
-          <Button type="button" :disabled="localUploadTesting" @click="submitLocalUploadTest">
-            {{ localUploadTesting ? '上传中...' : '上传' }}
-          </Button>
+          <div class="storage-upload-footer__actions">
+            <Button type="button" class="storage-upload-footer__cancel" variant="outline" :disabled="localUploadTesting" @click="closeLocalUploadTest">取消</Button>
+            <el-button
+              type="primary"
+              class="storage-upload-footer__submit"
+              :loading="localUploadTesting"
+              :disabled="localUploadTesting"
+              @click="submitLocalUploadTest"
+            >
+              <UploadOutlined v-if="!localUploadTesting" aria-hidden="true" />
+              {{ localUploadTesting ? '上传中...' : '上传' }}
+            </el-button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
 
-    <Dialog :open="localDirDialogOpen" @update:open="(value) => { localDirDialogOpen = value }">
-      <DialogContent class="max-w-[560px]" tabindex="0" @keydown="handleLocalDirDialogKeydown">
-        <DialogHeader>
-          <DialogTitle>选择本地目录</DialogTitle>
-        </DialogHeader>
-        <div class="space-y-3">
-          <div class="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
-            <span>当前目录：</span>
-            <button
-              v-for="(crumb, index) in localDirBreadcrumbs"
-              :key="crumb.path || 'data-root'"
-              type="button"
-              class="inline-flex items-center gap-1 hover:text-brand-600"
-              :disabled="localDirLoading"
-              @click="openBreadcrumbDirectory(crumb.path)"
-            >
-              <RightOutlined v-if="index > 0" class="text-[13px]" />
-              <FolderOutlined v-if="index === 0" class="text-[13px]" />
-              <span>{{ crumb.label }}</span>
-            </button>
-            <span
-              v-if="isCurrentDirSelected"
-              class="ml-1 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded border border-blue-200 bg-blue-50 text-brand-600"
-            >
-              <CheckCircleFilled class="text-[12px]" />
-              已选中
-            </span>
-          </div>
-          <div class="flex items-center gap-2">
-            <Button type="button" variant="outline" size="sm" :disabled="!localDirCurrentPath || localDirLoading" @click="openParentDirectory">
-              返回上级
-            </Button>
-            <Button type="button" size="sm" :disabled="localDirLoading || !localDirCurrentPath || isCurrentDirSelected" @click="chooseCurrentDirectory">
-              {{ isCurrentDirSelected ? '已选择当前目录' : '选择当前目录' }}
-            </Button>
-          </div>
-          <div class="flex items-center gap-2">
-            <Input
-              v-model="localDirNewFolderName"
-              placeholder="新建子目录名称"
-              :disabled="localDirLoading || localDirCreating"
-              @keyup.enter="createLocalDirectory"
-            />
-            <Button type="button" variant="outline" :disabled="localDirLoading || localDirCreating" @click="createLocalDirectory">
-              {{ localDirCreating ? '创建中...' : '新建目录' }}
-            </Button>
-          </div>
-          <div class="text-[11px] text-muted-foreground">快捷键：在“新建子目录名称”输入框按 Enter 创建目录，按 Ctrl + Enter 选择当前目录</div>
-          <div class="rounded border weak-divider max-h-[320px] overflow-y-auto divide-y">
-            <div
-              v-for="item in localDirItems"
-              :key="item.relative_path"
-              class="flex items-center gap-3 px-3 py-2 hover:bg-muted/70 dark:hover:bg-muted/30 cursor-pointer"
-              :class="item.relative_path === selectedLocalDirPath ? 'bg-brand-50/70 dark:bg-brand-900/20' : ''"
-              @click="openChildDirectory(item)"
-            >
-              <div class="flex items-center gap-2 min-w-0 text-sm hover:text-brand-600 text-left">
-                <div class="inline-flex h-7 w-7 items-center justify-center rounded border border-brand-200 bg-brand-50 text-brand-600 dark:border-brand-700/60 dark:bg-brand-900/30 dark:text-brand-300 shrink-0">
-                  <FolderOutlined class="text-[16px]" />
+    <el-dialog
+      v-model="localDirDialogOpen"
+      title="选择本地目录"
+      width="min(560px, calc(100dvw - 24px))"
+      class="app-nested-dialog storage-local-dir-dialog"
+      append-to-body
+      @keydown="handleLocalDirDialogKeydown"
+    >
+      <div class="storage-local-dir-shell">
+      <section class="storage-local-dir-parent-summary">
+        <span><CloudServerOutlined /></span>
+        <div><strong>{{ editor.name || '当前存储配置' }}</strong><small>本地存储 · ./data/{{ selectedLocalDirPath }}</small></div>
+      </section>
+      <div class="storage-local-dir-description">浏览 ./data 下的目录；选择后仅覆盖当前存储的本地目录路径。</div>
+      <div class="storage-local-dir-drawer app-file-browser">
+          <div class="app-file-browser-controls">
+            <div class="storage-local-dir-navigation app-file-browser-controls__navigation">
+              <button class="storage-local-dir-back" type="button" :disabled="!localDirCurrentPath || localDirLoading" @click="openParentDirectory">
+                <ArrowLeftOutlined />
+                <span>上一级</span>
+              </button>
+              <nav class="app-file-browser-breadcrumb" aria-label="当前目录">
+                <div class="app-file-browser-breadcrumb__track">
+                  <button
+                    v-for="(crumb, index) in localDirBreadcrumbs"
+                    :key="crumb.path || 'data-root'"
+                    type="button"
+                    class="storage-breadcrumb-button"
+                    :class="index === localDirBreadcrumbs.length - 1 && isCurrentDirSelected ? 'storage-breadcrumb-button-selected' : ''"
+                    :disabled="localDirLoading"
+                    @click="openBreadcrumbDirectory(crumb.path)"
+                  >
+                    <RightOutlined v-if="index > 0" />
+                    <FolderOutlined v-if="index === 0" />
+                    <span>{{ crumb.label }}</span>
+                  </button>
                 </div>
-                <div class="min-w-0">
-                  <div class="truncate font-medium">{{ item.name }}</div>
-                  <div class="text-[11px] text-muted-foreground truncate">./data/{{ item.relative_path }}</div>
-                </div>
+              </nav>
+            </div>
+            <div class="storage-local-dir-action-row">
+              <div class="storage-local-dir-create">
+                <Input
+                  v-model="localDirNewFolderName"
+                  placeholder="新建子目录名称"
+                  :disabled="localDirLoading || localDirCreating"
+                  @keyup.enter="createLocalDirectory"
+                />
+                <el-button :disabled="localDirLoading || localDirCreating" @click="createLocalDirectory">
+                  {{ localDirCreating ? '创建中...' : '新建目录' }}
+                </el-button>
               </div>
             </div>
-            <div v-if="!localDirLoading && localDirItems.length === 0" class="px-3 py-6 text-sm text-muted-foreground text-center">
-              当前目录下没有子目录
-            </div>
-            <div v-if="localDirLoading" class="px-3 py-6 text-sm text-muted-foreground text-center">读取中...</div>
+            <div class="storage-local-dir-tip">Enter 创建目录，Ctrl + Enter 选择当前目录</div>
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+          <div class="storage-browser-list storage-local-dir-list app-file-browser-content">
+            <div v-if="localDirLoading" class="app-file-browser-state" role="status">正在读取当前目录…</div>
+            <template v-else>
+              <button
+                v-for="item in localDirItems"
+                :key="item.relative_path"
+                type="button"
+                class="storage-browser-row storage-local-dir-row app-file-browser-row"
+                :class="item.relative_path === selectedLocalDirPath ? 'storage-browser-row-selected' : ''"
+                @click="openChildDirectory(item)"
+              >
+                <span class="app-file-browser-row-main">
+                  <span class="app-file-browser-folder-icon"><FolderOutlined /></span>
+                  <span class="app-file-browser-row-copy">
+                    <strong>{{ item.name }}</strong>
+                  </span>
+                </span>
+              </button>
+              <div v-if="localDirItems.length === 0" class="app-file-browser-state app-file-browser-state--empty">
+                <FolderOpenOutlined />
+                <strong>当前目录下没有子目录</strong>
+                <span>可返回上级目录或新建子目录</span>
+              </div>
+            </template>
+          </div>
+      </div>
+      </div>
+      <template #footer>
+        <div class="storage-local-dir-footer"><span>当前目录：./data/{{ localDirCurrentPath || '-' }}</span><div><el-button @click="localDirDialogOpen = false">取消</el-button><el-button class="storage-local-dir-select" type="primary" :disabled="localDirLoading || !localDirCurrentPath || isCurrentDirSelected" @click="chooseCurrentDirectory">{{ isCurrentDirSelected ? '已选择' : '选择当前目录' }}</el-button></div></div>
+      </template>
+    </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.storage-profile-dialog-body { display: grid; gap: 12px; }
+.storage-profile-section { padding: 14px; border: 1px solid var(--app-overlay-border); border-radius: 9px; background: var(--app-overlay-surface); }
+.storage-profile-section .storage-profile-provider-panel { overflow: visible; border: 0; border-radius: 0; background: transparent; }
+.storage-profile-section .storage-profile-tabs { padding-inline: 0; background: transparent; }
+.storage-provider-heading { margin-top: 4px; }
+.storage-local-dir-parent-summary > span { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 9px; background: color-mix(in srgb, var(--brand-500) 10%, transparent); color: var(--brand-700); }
+.storage-local-dir-shell { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.storage-local-dir-parent-summary { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--app-overlay-border); border-radius: 8px; background: color-mix(in srgb, var(--brand-50) 30%, var(--app-overlay-surface)); }
+.storage-local-dir-parent-summary div { display: grid; min-width: 0; }
+.storage-local-dir-parent-summary strong { font-size: 13px; }
+.storage-local-dir-parent-summary small { overflow: hidden; color: var(--admin-text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.storage-local-dir-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
+.storage-local-dir-footer > span { overflow: hidden; color: var(--admin-text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.storage-local-dir-footer > div { display: flex; flex: none; gap: 8px; }
+@media (max-width: 760px) { .storage-inline-fields, .storage-s3-fields { grid-template-columns: 1fr; } .storage-local-dir-footer { align-items: flex-start; flex-direction: column; } .storage-local-dir-footer > div { width: 100%; } .storage-local-dir-footer :deep(.el-button) { flex: 1; } }
+</style>

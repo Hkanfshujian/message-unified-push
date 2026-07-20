@@ -11,15 +11,15 @@ import (
 	"ops-message-unified-push/service/send_way_service"
 )
 
-type DeleteMsgSendWayReq struct {
+type ArchiveMsgSendWayReq struct {
 	ID string `json:"id" validate:"required,len=12" label:"渠道id"`
 }
 
 // DeleteMsgSendWay 删除消息渠道
-func DeleteMsgSendWay(c *gin.Context) {
+func ArchiveMsgSendWay(c *gin.Context) {
 	var (
 		appG = app.Gin{C: c}
-		req  DeleteMsgSendWayReq
+		req  ArchiveMsgSendWayReq
 	)
 
 	errCode, errMsg := app.BindJsonAndPlayValid(c, &req)
@@ -31,7 +31,7 @@ func DeleteMsgSendWay(c *gin.Context) {
 	sendWayService := send_way_service.SendWay{
 		ID: req.ID,
 	}
-	err := sendWayService.Delete()
+	err := sendWayService.Archive()
 	if err != nil {
 		appG.CResponse(http.StatusBadRequest, fmt.Sprintf("删除发信渠道失败！%s", err), nil)
 		return
@@ -72,12 +72,12 @@ func GetMsgSendWayList(c *gin.Context) {
 
 	offset, limit := util.GetPageSize(c)
 	sendWayService := send_way_service.SendWay{
-		Name:     name,
-		Type:     type_,
+		Name:      name,
+		Type:      type_,
 		StartTime: startTime,
 		EndTime:   endTime,
-		PageNum:  offset,
-		PageSize: limit,
+		PageNum:   offset,
+		PageSize:  limit,
 	}
 	ways, err := sendWayService.GetAll()
 	if err != nil {

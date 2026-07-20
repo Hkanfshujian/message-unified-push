@@ -5,7 +5,7 @@ const CONSTANT = {
     PAGE: 1,
     // PAGE_SIZE: 8,
     TOTAL: 0,
-    DEFALUT_SITE_CONFIG: JSON.stringify({ "logo": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128' width='200' height='200'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0%' stop-color='#0EA5E9'/><stop offset='100%' stop-color='#2563EB'/></linearGradient></defs><rect x='8' y='8' width='112' height='112' rx='30' fill='url(#g)'/><path d='M32 94V34h16l16 24 16-24h16v60H80V60L64 84 48 60v34H32z' fill='#FFFFFF'/></svg>", "pagesize": "8", "slogan": "Message Unified Push Platform", "title": "消息统一推送中台", "login_title": "消 息 统 一 推 送 中 台", "theme_color": "blue" }),
+    DEFALUT_SITE_CONFIG: JSON.stringify({ "logo": "/dora-logo.svg", "pagesize": "8", "slogan": "Message Unified Push Platform", "title": "消息统一推送中台", "login_title": "消 息 统 一 推 送 中 台" }),
     LOG_TASK_ID: "T-IM1GBswSRY",
     STORE_TOKEN_NAME: '__message_nest_token__',
     STORE_AUTH_SOURCE_NAME: '__message_nest_auth_source__',

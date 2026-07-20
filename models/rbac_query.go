@@ -16,6 +16,10 @@ func GetPermissionCodesByUserID(userID int) ([]string, error) {
 		Joins("JOIN "+roleTable+" ON "+roleTable+".id = "+rolePermissionTable+".role_id").
 		Joins("JOIN "+userRoleTable+" ON "+userRoleTable+".role_id = "+roleTable+".id").
 		Where(userRoleTable+".user_id = ?", userID).
+		Where(notDeleted(permissionTable)).
+		Where(notDeleted(rolePermissionTable)).
+		Where(notDeleted(roleTable)).
+		Where(notDeleted(userRoleTable)).
 		Where(permissionTable + ".status = 1").
 		Where(roleTable + ".status = 1").
 		Scan(&directCodes).Error
@@ -32,6 +36,12 @@ func GetPermissionCodesByUserID(userID int) ([]string, error) {
 		Joins("JOIN "+userGroupTable+" ON "+userGroupTable+".id = "+groupRoleTable+".group_id").
 		Joins("JOIN "+userGroupMemberTable+" ON "+userGroupMemberTable+".group_id = "+userGroupTable+".id").
 		Where(userGroupMemberTable+".user_id = ?", userID).
+		Where(notDeleted(permissionTable)).
+		Where(notDeleted(rolePermissionTable)).
+		Where(notDeleted(roleTable)).
+		Where(notDeleted(groupRoleTable)).
+		Where(notDeleted(userGroupTable)).
+		Where(notDeleted(userGroupMemberTable)).
 		Where(permissionTable + ".status = 1").
 		Where(roleTable + ".status = 1").
 		Where(userGroupTable + ".status = 1").
@@ -67,6 +77,8 @@ func GetRoleCodesByUserID(userID int) ([]string, error) {
 		Select("DISTINCT "+roleTable+".code").
 		Joins("JOIN "+userRoleTable+" ON "+userRoleTable+".role_id = "+roleTable+".id").
 		Where(userRoleTable+".user_id = ?", userID).
+		Where(notDeleted(roleTable)).
+		Where(notDeleted(userRoleTable)).
 		Where(roleTable + ".status = 1").
 		Scan(&directCodes).Error
 	if err != nil {
@@ -80,6 +92,10 @@ func GetRoleCodesByUserID(userID int) ([]string, error) {
 		Joins("JOIN "+userGroupTable+" ON "+userGroupTable+".id = "+groupRoleTable+".group_id").
 		Joins("JOIN "+userGroupMemberTable+" ON "+userGroupMemberTable+".group_id = "+userGroupTable+".id").
 		Where(userGroupMemberTable+".user_id = ?", userID).
+		Where(notDeleted(roleTable)).
+		Where(notDeleted(groupRoleTable)).
+		Where(notDeleted(userGroupTable)).
+		Where(notDeleted(userGroupMemberTable)).
 		Where(roleTable + ".status = 1").
 		Where(userGroupTable + ".status = 1").
 		Scan(&groupCodes).Error
@@ -111,6 +127,8 @@ func GetGroupCodesByUserID(userID int) ([]string, error) {
 		Select("DISTINCT "+groupTable+".code").
 		Joins("JOIN "+memberTable+" ON "+memberTable+".group_id = "+groupTable+".id").
 		Where(memberTable+".user_id = ?", userID).
+		Where(notDeleted(groupTable)).
+		Where(notDeleted(memberTable)).
 		Where(groupTable + ".status = 1").
 		Scan(&codes).Error
 	if err != nil {

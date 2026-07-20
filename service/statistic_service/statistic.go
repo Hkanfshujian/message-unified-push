@@ -5,8 +5,10 @@ import (
 )
 
 type StatisticService struct {
-	TaskID string
-	Days   int
+	TaskID    string
+	Days      int
+	StartTime string
+	EndTime   string
 }
 
 func (sw *StatisticService) GetStatisticData() (models.StatisticData, error) {
@@ -24,7 +26,7 @@ func (sw *StatisticService) GetTrendStatisticData() (models.TrendStatisticData, 
 	if days <= 0 {
 		days = 30 // 默认30天
 	}
-	return models.GetTrendStatisticData(days)
+	return models.GetTrendStatisticData(days, sw.StartTime, sw.EndTime)
 }
 
 // GetChannelStatisticData 获取渠道统计数据

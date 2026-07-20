@@ -9,6 +9,7 @@ import (
 
 type SendWays struct {
 	UUIDModel
+	SoftDeleteModel
 
 	Name string `json:"name" gorm:"type:varchar(100) ;default:'';"`
 	Type string `json:"type" gorm:"type:varchar(100) ;default:'';index"`
@@ -27,13 +28,19 @@ func extractDateRangeFromConditions(conditions interface{}) (interface{}, string
 	return typed, startTime, endTime
 }
 
-func GenerateWayUniqueID() string {
-	newUUID := util.GenerateUniqueID()
-	return fmt.Sprintf("WY%s", newUUID)
+func GenerateWayUniqueID() (string, error) {
+	newUUID, err := util.GenerateUniqueID()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("WY%s", newUUID), nil
 }
 
 func AddSendWay(name string, auth string, wayType string, createdBy string, modifiedBy string) error {
-	newUUID := GenerateWayUniqueID()
+	newUUID, err := GenerateWayUniqueID()
+	if err != nil {
+		return err
+	}
 	way := SendWays{
 		UUIDModel: UUIDModel{
 			ID:         newUUID,
@@ -127,8 +134,8 @@ func GetWayByName(name string) (SendWays, error) {
 	return way, nil
 }
 
-func DeleteMsgWay(id string) error {
-	if err := db.Where("id = ?", id).Delete(&SendWays{}).Error; err != nil {
+func ArchiveMsgWay(id string) error {
+	if err := db.Unscoped().Where("id = ?", id).Delete(&SendWays{}).Error; err != nil {
 		return err
 	}
 

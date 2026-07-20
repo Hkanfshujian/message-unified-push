@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { toast } from 'vue-sonner'
+import { notifyError, notifySuccess } from '@/util/uiFeedback'
 
 /**
  * API 代码查看器公共逻辑 Composable
@@ -19,13 +19,34 @@ export function useApiCodeViewer() {
     { value: 'rust', label: 'Rust', icon: '🦀' }
   ]
 
+  const copyWithSelection = (text: string) => {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.setAttribute('readonly', '')
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    const copied = document.execCommand('copy')
+    document.body.removeChild(textarea)
+    return copied
+  }
+
   // 复制代码到剪贴板
   const copyToClipboard = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(text)
-      toast.success('复制成功')
-    } catch (err) {
-      toast.error('复制失败')
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(text)
+        } catch {
+          if (!copyWithSelection(text)) throw new Error('copy failed')
+        }
+      } else if (!copyWithSelection(text)) {
+        throw new Error('copy failed')
+      }
+      notifySuccess('复制成功')
+    } catch {
+      notifyError('复制失败，请手动选择代码复制')
     }
   }
 

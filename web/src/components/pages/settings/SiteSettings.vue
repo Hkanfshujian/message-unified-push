@@ -1,68 +1,18 @@
 <script setup lang="ts">
-import { reactive, onMounted, ref, watch, computed } from 'vue'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { toast } from 'vue-sonner'
-import { request } from '@/api/api'
+import { reactive, onMounted, ref, computed, watch } from 'vue'
+import { settingsApi } from '@/api/settings'
+import { notifyError, notifySuccess } from '@/util/uiFeedback'
 // @ts-ignore
 import { LocalStieConfigUtils } from '@/util/localSiteConfig'
 import {
   QuestionCircleOutlined,
-  CheckOutlined,
   CheckCircleOutlined,
   CheckCircleFilled,
   RightOutlined,
   FolderOutlined
 } from '@ant-design/icons-vue'
-import { THEMES, applyTheme, getStoredTheme } from '@/util/theme'
 // @ts-ignore
 import config from '../../../../config.js'
-
-const currentThemeColor = ref(getStoredTheme())
-const customColor = ref('#1890ff')
-const customColorInput = ref('#1890ff')
-
-interface SidebarPreset {
-  color: string
-  builtin: boolean
-}
-
-const BUILTIN_SIDEBAR_PRESETS: SidebarPreset[] = [
-  { color: '#0b3c51', builtin: true }
-]
-
-const sidebarPresets = ref<SidebarPreset[]>([])
-
-const changeTheme = (themeKey: string) => {
-  currentThemeColor.value = themeKey
-  state.theme_color = themeKey
-  applyTheme(themeKey)
-}
-
-const applyCustomTheme = (raw: string) => {
-  const value = raw.trim() || '#1890ff'
-  customColorInput.value = value
-  if (value.startsWith('#') && value.length >= 4) {
-    customColor.value = value
-  }
-  const key = `custom:${value}`
-  currentThemeColor.value = key
-  state.theme_color = key
-  applyTheme(key)
-}
-
-const changeCustomTheme = (event: Event) => {
-  const value = (event.target as HTMLInputElement).value || '#1890ff'
-  applyCustomTheme(value)
-}
-
-const applyCustomThemeFromInput = () => {
-  applyCustomTheme(customColorInput.value)
-}
 
 const state = reactive({
   title: '',
@@ -72,8 +22,6 @@ const state = reactive({
   logo_storage_profile_id: '',
   pagesize: '',
   cookieExpDays: '',
-  sidebarBg: '#0b3c51',
-  theme_color: getStoredTheme(),
   sloganInitialEnabled: false,
   channel_test_message: 'This is a test message from message-platform.',
   section: 'site_config',
@@ -129,7 +77,7 @@ watch(isInlineSvgLogo, (value) => {
 })
 
 const loadLogoStorageProfiles = async () => {
-  const rsp = await request.get('/system/storage-config')
+  const rsp = await settingsApi.getStorageConfig()
   const data = rsp?.data?.data || {}
   const list = Array.isArray(data.profiles) ? data.profiles : []
   defaultStorageProfileID.value = (data.default_storage_id || '').trim()
@@ -137,7 +85,7 @@ const loadLogoStorageProfiles = async () => {
     .map((item: any) => ({
       id: String(item?.id || '').trim(),
       name: String(item?.name || '').trim(),
-      provider: String(item?.provider || '').trim().toLowerCase() === 's3' ? 's3' : 'local',
+      provider: (String(item?.provider || '').trim().toLowerCase() === 's3' ? 's3' : 'local') as 's3' | 'local',
       s3_public_base_url: String(item?.s3_public_base_url || '').trim()
     }))
     .filter((item: any) => item.id)
@@ -218,6 +166,7 @@ const zoomInLogoCrop = () => applyLogoCropScale(logoCropScale.value + 0.08)
 const zoomOutLogoCrop = () => applyLogoCropScale(logoCropScale.value - 0.08)
 
 const openLogoCropDialog = (file: File): Promise<void> => {
+  logoBrowseDialogOpen.value = false
   return new Promise((resolve, reject) => {
     const objectUrl = URL.createObjectURL(file)
     const img = new Image()
@@ -269,15 +218,15 @@ const uploadLogoCroppedBlob = async (blob: Blob) => {
   const formData = new FormData()
   formData.append('file', new File([blob], 'site-logo.png', { type: 'image/png' }))
   formData.append('storage_profile_id', state.logo_storage_profile_id)
-  const rsp = await request.post('/system/site-logo/upload', formData)
+  const rsp = await settingsApi.uploadSiteLogo(formData)
   if (rsp?.data?.code !== 200) {
-    toast.error(rsp?.data?.msg || '上传失败')
+    notifyError(rsp?.data?.msg || '上传失败')
     return
   }
   const data = rsp?.data?.data || {}
   state.logo = normalizeUploadedLogoUrl(data.url || '')
   state.logo_storage_profile_id = data.storage_profile_id || state.logo_storage_profile_id
-  toast.success('站点图标上传成功')
+  notifySuccess('站点图标上传成功')
 }
 
 const onLogoCropPointerDown = (event: PointerEvent) => {
@@ -319,7 +268,7 @@ const confirmLogoCropAndUpload = async () => {
     await uploadLogoCroppedBlob(blob)
     closeLogoCropDialog()
   } catch (error: any) {
-    toast.error(error?.message || '图标上传失败')
+    notifyError(error?.message || '图标上传失败')
   } finally {
     logoUploading.value = false
   }
@@ -330,14 +279,14 @@ const onSelectLogoFile = async (event: Event) => {
   const file = target.files?.[0]
   if (!file) return
   if (file.size > 2 * 1024 * 1024) {
-    toast.error('图片不能超过 2MB')
+    notifyError('图片不能超过 2MB')
     target.value = ''
     return
   }
   try {
     await openLogoCropDialog(file)
   } catch (error: any) {
-    toast.error(error?.message || '图片读取失败')
+    notifyError(error?.message || '图片读取失败')
   }
   target.value = ''
 }
@@ -350,15 +299,13 @@ const openClearLogoConfirm = () => {
 const clearSiteLogo = async () => {
   logoClearing.value = true
   try {
-    const rsp = await request.post('/system/site-logo/clear', {
-      delete_source: clearLogoDeleteSource.value
-    })
+    const rsp = await settingsApi.clearSiteLogo(clearLogoDeleteSource.value)
     if (rsp?.data?.code !== 200) {
-      toast.error(rsp?.data?.msg || '恢复默认失败')
+      notifyError(rsp?.data?.msg || '恢复默认失败')
       return
     }
     await getSiteConfig()
-    toast.success(clearLogoDeleteSource.value ? '已恢复默认图标，并删除源文件' : '已恢复默认图标')
+    notifySuccess(clearLogoDeleteSource.value ? '已恢复默认图标，并删除源文件' : '已恢复默认图标')
     clearLogoConfirmOpen.value = false
   } finally {
     logoClearing.value = false
@@ -373,9 +320,7 @@ const loadLogoBrowseFiles = async (path: string) => {
   logoBrowseLoading.value = true
   try {
     if (profile.provider === 's3') {
-      const rsp = await request.get('/system/storage-config/s3-objects', {
-        params: { profile_id: profile.id, path }
-      })
+      const rsp = await settingsApi.listLocalFiles(profile.id, path)
       const data = rsp?.data?.data || {}
       logoBrowseCurrentPath.value = data.current_path || ''
       logoBrowseParentPath.value = data.parent_path || ''
@@ -385,9 +330,7 @@ const loadLogoBrowseFiles = async (path: string) => {
       logoBrowseFiles.value = Array.isArray(data.files) ? data.files : []
       return
     }
-    const rsp = await request.get('/system/storage-config/local-files', {
-      params: { profile_id: profile.id, path }
-    })
+    const rsp = await settingsApi.listLocalFiles(profile.id, path)
     const data = rsp?.data?.data || {}
     logoBrowseCurrentPath.value = data.current_path || ''
     logoBrowseParentPath.value = data.parent_path || ''
@@ -396,7 +339,7 @@ const loadLogoBrowseFiles = async (path: string) => {
     logoBrowseDirectories.value = Array.isArray(data.directories) ? data.directories : []
     logoBrowseFiles.value = Array.isArray(data.files) ? data.files : []
   } catch (error: any) {
-    toast.error(error?.response?.data?.msg || '读取存储文件失败')
+    notifyError(error?.response?.data?.msg || '读取存储文件失败')
   } finally {
     logoBrowseLoading.value = false
   }
@@ -404,7 +347,7 @@ const loadLogoBrowseFiles = async (path: string) => {
 
 const openLogoBrowseDialog = async () => {
   if (!state.logo_storage_profile_id) {
-    toast.error('请先选择图标存储')
+    notifyError('请先选择图标存储')
     return
   }
   logoBrowseDialogOpen.value = true
@@ -455,17 +398,9 @@ const filteredLogoBrowseFiles = computed(() => {
   return images.filter(item => (item.name || '').toLowerCase().includes(keyword))
 })
 
-const logoBrowseThumbGridClass = computed(() => {
-  if (logoBrowseThumbSize.value === 'sm') return 'grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-2'
-  if (logoBrowseThumbSize.value === 'lg') return 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
-  return 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3'
-})
+const logoBrowseThumbGridClass = computed(() => `app-file-browser-grid app-file-browser-grid--${logoBrowseThumbSize.value}`)
 
-const logoBrowseThumbPreviewClass = computed(() => {
-  if (logoBrowseThumbSize.value === 'sm') return 'w-full h-20 rounded border weak-divider bg-muted/40 dark:bg-muted/20 overflow-hidden flex items-center justify-center'
-  if (logoBrowseThumbSize.value === 'lg') return 'w-full h-36 rounded border weak-divider bg-muted/40 dark:bg-muted/20 overflow-hidden flex items-center justify-center'
-  return 'w-full h-28 rounded border weak-divider bg-muted/40 dark:bg-muted/20 overflow-hidden flex items-center justify-center'
-})
+const logoBrowseThumbPreviewClass = computed(() => `site-logo-preview-tile app-file-browser-card-preview app-file-browser-card-preview--${logoBrowseThumbSize.value}`)
 
 const logoBrowseThumbFiles = computed(() =>
   filteredLogoBrowseFiles.value.map((file) => {
@@ -484,62 +419,16 @@ const applyLogoFromBrowse = (file: { name: string, public_url?: string, object_k
   const profile = selectedLogoStorageProfile.value
   const rawUrl = (file.public_url || '').trim()
   if (profile?.provider === 's3' && !rawUrl) {
-    toast.error('当前 S3 文件缺少 public_url，无法作为站点图标')
+    notifyError('当前 S3 文件缺少 public_url，无法作为站点图标')
     return
   }
   if (!rawUrl) {
-    toast.error('文件地址为空，无法选择')
+    notifyError('文件地址为空，无法选择')
     return
   }
   state.logo = rawUrl
   logoBrowseDialogOpen.value = false
-  toast.success(`已选择图标：${file.name}`)
-}
-
-const applySidebarBg = (value: string) => {
-  const color = (value || '#0b3c51').trim() || '#0b3c51'
-  document.documentElement.style.setProperty('--sidebar-bg', color)
-}
-
-const loadSidebarPresets = () => {
-  let userColors: string[] = []
-  try {
-    const stored = localStorage.getItem('sidebarBgPresets')
-    if (stored) {
-      userColors = JSON.parse(stored) || []
-    }
-  } catch {
-    userColors = []
-  }
-
-  sidebarPresets.value = [
-    ...BUILTIN_SIDEBAR_PRESETS,
-    ...userColors
-      .filter(c => !BUILTIN_SIDEBAR_PRESETS.some(b => b.color === c))
-      .map(color => ({ color, builtin: false })),
-  ]
-}
-
-const saveSidebarPresets = () => {
-  const userColors = sidebarPresets.value.filter(p => !p.builtin).map(p => p.color)
-  try {
-    localStorage.setItem('sidebarBgPresets', JSON.stringify(userColors))
-  } catch {
-  }
-}
-
-const addSidebarPreset = () => {
-  const color = (state.sidebarBg || '').trim()
-  if (!color) return
-  if (sidebarPresets.value.some(p => p.color === color)) return
-  sidebarPresets.value.push({ color, builtin: false })
-  saveSidebarPresets()
-}
-
-const removeSidebarPreset = (preset: SidebarPreset) => {
-  if (preset.builtin) return
-  sidebarPresets.value = sidebarPresets.value.filter(p => p.color !== preset.color)
-  saveSidebarPresets()
+  notifySuccess(`已选择图标：${file.name}`)
 }
 
 // 提交设置
@@ -555,34 +444,32 @@ const handleSubmit = async () => {
         logo_storage_profile_id: state.logo_storage_profile_id.trim(),
         pagesize: state.pagesize.toString(),
         cookie_exp_days: state.cookieExpDays.toString(),
-        sidebar_bg: state.sidebarBg,
-        theme_color: state.theme_color,
         slogan_initial_enabled: state.sloganInitialEnabled ? 'true' : 'false',
         channel_test_message: state.channel_test_message.trim(),
       },
     }
-    const response = await request.post('/settings/set', postData)
+    const response = await settingsApi.set(postData.section, postData.data)
     if (response.data.code === 200) {
       const msg = response.data.msg
-      toast.success(msg)
+      notifySuccess(msg)
     }
   } catch (error) {
-    toast.error('保存失败，请稍后重试')
+    notifyError('保存失败，请稍后重试')
   }
 }
 
 // 恢复默认设置
 const handleSubmitReset = async () => {
   try {
-    const response = await request.post('/settings/reset', {})
+    const response = await settingsApi.reset()
     if (response.data.code === 200) {
       const msg = response.data.msg
-      toast.success(msg)
+      notifySuccess(msg)
       // 重新获取设置
       await getSiteConfig()
     }
   } catch (error) {
-    toast.error('恢复默认设置失败，请稍后重试')
+    notifyError('恢复默认设置失败，请稍后重试')
   }
 }
 
@@ -590,7 +477,7 @@ const handleSubmitReset = async () => {
 const getSiteConfig = async () => {
   try {
     const params = { params: { section: 'site_config' } }
-    const response = await request.get('/settings/getsetting', params)
+    const response = await settingsApi.get(params.params.section)
     if (response.data.code === 200) {
       const data = response.data.data
       state.title = data.title || ''
@@ -600,22 +487,8 @@ const getSiteConfig = async () => {
       state.login_title = data.login_title || ''
       state.pagesize = data.pagesize || ''
       state.cookieExpDays = data.cookie_exp_days || '1'
-      state.sidebarBg = data.sidebar_bg || '#0b3c51'
-      state.theme_color = data.theme_color || getStoredTheme()
       state.sloganInitialEnabled = String(data.slogan_initial_enabled || 'false') === 'true'
       state.channel_test_message = data.channel_test_message || 'This is a test message from ops-message-unified-push.'
-
-      currentThemeColor.value = state.theme_color
-      if (state.theme_color.startsWith('custom:')) {
-        const raw = state.theme_color.split(':')[1]
-        customColorInput.value = raw || '#1890ff'
-        customColor.value = raw && raw.startsWith('#') ? raw : '#1890ff'
-      } else {
-        customColorInput.value = '#1890ff'
-        customColor.value = '#1890ff'
-      }
-      applyTheme(state.theme_color)
-      applySidebarBg(state.sidebarBg)
 
       // 确保存储配置选择有效
       if (logoStorageProfiles.value.length > 0) {
@@ -629,22 +502,14 @@ const getSiteConfig = async () => {
       LocalStieConfigUtils.updateLocalConfig(data)
     }
   } catch (error) {
-    toast.error('获取配置失败')
+    notifyError('获取配置失败')
   }
 }
 
 onMounted(async () => {
-  loadSidebarPresets()
   await loadLogoStorageProfiles()
   await getSiteConfig()
 })
-
-watch(
-  () => state.sidebarBg,
-  (val) => {
-    applySidebarBg(val)
-  }
-)
 </script>
 
 <script lang="ts">
@@ -654,111 +519,114 @@ export default {
 </script>
 
 <template>
-  <div class="space-y-5">
-    <div class="rounded-lg border weak-divider p-4 space-y-3 bg-background/70 dark:bg-muted/30">
-      <div class="text-sm font-semibold">基本设置</div>
+  <div class="site-settings-form space-y-5">
+    <el-card shadow="never" class="settings-section-card">
+      <div class="settings-card-heading">
+        <div class="settings-card-title">基本设置</div>
+        <div class="settings-card-description">统一站点展示名称、登录页文案和侧边栏品牌识别。</div>
+      </div>
       <div class="space-y-4">
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-foreground">站点标题</label>
-          <Input v-model="state.title" placeholder="请输入自定义的网站标题" />
+        <div class="app-form-field">
+          <label class="app-form-label">站点标题</label>
+          <el-input v-model="state.title" placeholder="请输入自定义的网站标题" />
         </div>
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-foreground">站点标语</label>
-          <Input v-model="state.slogan" placeholder="请输入自定义的网站slogan" />
-          <div class="flex items-center justify-between rounded-md border border-dashed weak-divider px-3 py-2">
+        <div class="app-form-field">
+          <label class="app-form-label">站点标语</label>
+          <el-input v-model="state.slogan" placeholder="请输入自定义的网站slogan" />
+          <div class="site-settings-inline-option flex items-center justify-between gap-3 px-3 py-2">
             <div>
-              <div class="text-sm text-foreground">菜单侧边栏收起状态左上角显示字母跟随标语首字母</div>
-              <div class="text-xs text-muted-foreground">开启后优先取标语首字母；关闭后固定使用默认值 M</div>
+              <div class="settings-option-title">侧边栏折叠标识跟随标语首字母</div>
+              <div class="settings-option-description">开启后优先取标语首字母；关闭后固定使用默认值 M。</div>
             </div>
-            <Switch
+            <el-switch
               :model-value="state.sloganInitialEnabled"
-              @update:model-value="(val) => state.sloganInitialEnabled = val === true"
+              @update:model-value="(val: boolean | string | number) => state.sloganInitialEnabled = val === true"
             />
           </div>
         </div>
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-foreground">登录页标题</label>
-          <Input v-model="state.login_title" placeholder="登录页显示的标题，默认：消 息 统 一 推 送 中 台" />
+        <div class="app-form-field">
+          <label class="app-form-label">登录页标题</label>
+          <el-input v-model="state.login_title" placeholder="登录页显示的标题，默认：消 息 统 一 推 送 中 台" />
         </div>
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-foreground">站点图标</label>
-          <!-- 存储选择 -->
+        <div class="app-form-field">
+          <label class="app-form-label">站点图标</label>
           <div v-if="logoStorageProfiles.length > 0" class="space-y-1">
             <div class="flex items-center justify-between gap-2">
-              <div class="text-xs text-muted-foreground">图标存储</div>
-              <Button
+              <div class="settings-option-description">图标存储</div>
+              <el-button
                 v-if="isInlineSvgLogo"
-                type="button"
-                variant="ghost"
                 size="sm"
+                text
                 class="h-7 px-2 text-xs text-muted-foreground"
                 @click="showLogoStorageAdvanced = !showLogoStorageAdvanced"
               >
                 {{ showLogoStorageAdvanced ? '收起高级选项' : '高级选项' }}
-              </Button>
+              </el-button>
             </div>
             <div v-if="logoStoragePanelExpanded" class="space-y-1">
-              <select
+              <el-select
                 v-model="state.logo_storage_profile_id"
-                class="w-full h-9 px-3 rounded-md border border-input bg-background text-sm"
+                class="w-full"
               >
-                <option v-for="profile in logoStorageProfiles" :key="profile.id" :value="profile.id">
-                  {{ profile.name }}（{{ profile.provider === 's3' ? 'S3' : '本地' }} / {{ profile.id }}）
-                </option>
-              </select>
-              <div v-if="isInlineSvgLogo" class="text-xs text-amber-600">
+                <el-option
+                  v-for="profile in logoStorageProfiles"
+                  :key="profile.id"
+                  :value="profile.id"
+                  :label="`${profile.name}（${profile.provider === 's3' ? 'S3' : '本地'} / ${profile.id}）`"
+                />
+              </el-select>
+              <div v-if="isInlineSvgLogo" class="settings-warning-text">
                 当前为默认/SVG图标，显示效果不依赖存储类型；存储选择仅在“上传并裁剪”或“浏览”时生效。
               </div>
             </div>
-            <div v-else class="text-xs text-muted-foreground">
+            <div v-else class="settings-option-description">
               当前为默认/SVG图标，显示效果不依赖存储类型。需要上传或浏览存储文件时可展开“高级选项”。
             </div>
           </div>
-          <!-- 上传操作 -->
           <input ref="logoInputRef" type="file" accept=".png,.jpg,.jpeg,.webp" class="hidden" @change="onSelectLogoFile">
-          <div class="flex items-center gap-2 flex-wrap">
-            <Button
-              type="button"
-              variant="outline"
+          <div class="site-logo-action-strip">
+            <el-button
+              native-type="button"
               size="sm"
+              type="primary"
+              class="site-logo-action-button"
               :disabled="logoUploading || logoClearing || !state.logo_storage_profile_id"
               @click="logoInputRef?.click()"
             >
               {{ logoUploading ? '上传中...' : '上传并裁剪' }}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
+            </el-button>
+            <el-button
+              native-type="button"
               size="sm"
+              class="site-logo-action-button"
               :disabled="logoUploading || logoClearing || !state.logo_storage_profile_id"
               @click="openLogoBrowseDialog"
             >
               浏览
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
+            </el-button>
+            <el-button
+              native-type="button"
               size="sm"
+              class="site-logo-action-button site-logo-action-button-danger"
               :disabled="logoUploading || logoClearing || !state.logo"
               @click="openClearLogoConfirm"
             >
               {{ logoClearing ? '恢复中...' : '恢复默认图标' }}
-            </Button>
+            </el-button>
             <button
               type="button"
-              class="inline-flex items-center gap-1.5 text-xs text-foreground/80"
+              class="site-logo-delete-toggle"
+              :class="clearLogoDeleteSource ? 'site-logo-delete-toggle-active' : ''"
               :title="clearLogoDeleteSource ? '恢复默认图标时同步删除存储中的源文件' : '恢复默认图标时仅清理配置，不删除存储源文件'"
               @click="clearLogoDeleteSource = !clearLogoDeleteSource"
             >
-              <CheckCircleFilled v-if="clearLogoDeleteSource" class="text-[14px] text-brand-600" />
-              <CheckCircleOutlined v-else class="text-[14px] text-muted-foreground" />
+              <CheckCircleFilled v-if="clearLogoDeleteSource" class="text-[14px]" />
+              <CheckCircleOutlined v-else class="text-[14px]" />
               <span>恢复时同步删除源文件</span>
             </button>
           </div>
-          <div class="text-xs text-muted-foreground">支持 jpg/png/webp，最大 2MB，上传后自动裁剪为方图</div>
-          <!-- 已上传预览 -->
-          <div v-if="state.logo" class="flex items-center gap-3 rounded border weak-divider p-2 bg-muted/30">
-            <!-- 旧数据：SVG 文本，直接渲染 -->
+          <div class="app-form-help">支持 jpg/png/webp，最大 2MB，上传后自动裁剪为方图。</div>
+          <div v-if="state.logo" class="site-logo-current-preview">
             <div
               v-if="state.logo.trimStart().startsWith('<')"
               class="w-8 h-8 flex-shrink-0 flex items-center justify-center overflow-hidden"
@@ -769,7 +637,7 @@ export default {
               v-else
               :src="resolveLogoUrl(state.logo)"
               alt="site-logo"
-              class="w-8 h-8 flex-shrink-0 rounded object-cover"
+              class="w-8 h-8 flex-shrink-0 rounded-xl object-cover"
             >
             <div class="text-xs text-muted-foreground break-all flex-1 line-clamp-2">
               {{ state.logo.trimStart().startsWith('<') ? '（SVG 文本，不依赖存储类型；建议上传图片替换）' : state.logo }}
@@ -777,196 +645,97 @@ export default {
           </div>
         </div>
       </div>
-    </div>
+    </el-card>
 
-    <div class="rounded-lg border weak-divider p-4 space-y-3 bg-background/70 dark:bg-muted/30">
-      <div class="text-sm font-semibold">个性设置</div>
-      <div class="space-y-4">
-        <div class="space-y-3">
-          <label class="text-sm font-medium text-foreground">主题色</label>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <button v-for="t in THEMES" :key="t.key" @click="changeTheme(t.key)"
-              class="group relative flex items-center gap-2.5 p-2.5 rounded-lg border transition-all duration-[var(--motion-normal)]"
-              :class="[
-                currentThemeColor === t.key
-                  ? 'border-brand bg-brand/5 shadow-sm ring-1 ring-brand/20'
-                  : 'border-border hover:border-brand/40 hover:bg-muted/30'
-              ]">
-              <div class="w-4 h-4 rounded-full shadow-inner border border-white/20 flex-shrink-0"
-                :style="{ backgroundColor: t.light }"></div>
-              <span class="text-xs font-medium truncate"
-                :class="currentThemeColor === t.key ? 'text-brand' : 'text-foreground/80'">{{ t.name }}</span>
-              <div v-if="currentThemeColor === t.key"
-                class="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-brand text-white flex items-center justify-center shadow-sm">
-                <CheckOutlined class="text-[8px]" />
-              </div>
-            </button>
-            <button
-              class="group relative flex items-center gap-2.5 p-2.5 rounded-lg border transition-all duration-[var(--motion-normal)]"
-              :class="[
-                currentThemeColor.startsWith('custom:')
-                  ? 'border-brand bg-brand/5 shadow-sm ring-1 ring-brand/20'
-                  : 'border-border hover:border-brand/40 hover:bg-muted/30'
-              ]"
-            >
-              <input
-                type="color"
-                :value="customColor"
-                @input.stop="changeCustomTheme"
-                class="w-6 h-6 rounded border border-border bg-transparent cursor-pointer"
-              />
-              <Input
-                v-model="customColorInput"
-                placeholder="#1890ff 或 rgb(24,144,255)"
-                class="h-8 text-xs"
-                @keyup.enter="applyCustomThemeFromInput"
-                @blur="applyCustomThemeFromInput"
-              />
-            </button>
-          </div>
-        </div>
-
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-foreground">侧边栏背景色</label>
-          <div v-if="sidebarPresets.length" class="flex flex-wrap gap-2">
-            <button
-              v-for="preset in sidebarPresets"
-              :key="preset.color"
-              type="button"
-              class="flex items-center gap-2 px-2 py-1 rounded-md border text-xs"
-              :class="state.sidebarBg === preset.color ? 'border-brand bg-brand/5' : 'border-border hover:border-brand/40'"
-              @click="state.sidebarBg = preset.color"
-            >
-              <span
-                class="w-4 h-4 rounded border border-border"
-                :style="{ backgroundColor: preset.color }"
-              />
-              <span class="font-mono">{{ preset.color }}</span>
-              <button
-                v-if="!preset.builtin"
-                type="button"
-                class="ml-1 text-[10px] text-muted-foreground hover:text-red-500"
-                @click.stop="removeSidebarPreset(preset)"
-              >
-                ×
-              </button>
-            </button>
-          </div>
-          <div class="flex items-center gap-2 mt-2">
-            <input
-              type="color"
-              v-model="state.sidebarBg"
-              class="w-8 h-8 rounded border border-border bg-transparent cursor-pointer"
-            />
-            <Input
-              v-model="state.sidebarBg"
-              placeholder="#0b3c51 或 rgb(11,60,81)"
-              class="h-8 text-xs max-w-[220px]"
-            />
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              class="h-8 px-2 text-xs"
-              @click="addSidebarPreset"
-            >
-              加入固定方案
-            </Button>
-          </div>
-        </div>
+    <el-card shadow="never" class="settings-section-card">
+      <div class="settings-card-heading">
+        <div class="settings-card-title">系统参数</div>
+        <div class="settings-card-description">配置分页和登录会话有效期。</div>
       </div>
-    </div>
-
-    <div class="rounded-lg border weak-divider p-4 space-y-3 bg-background/70 dark:bg-muted/30">
-      <div class="text-sm font-semibold">系统参数</div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-foreground">分页大小</label>
-          <Input v-model="state.pagesize" placeholder="页面分页大小" />
+        <div class="app-form-field">
+          <label class="app-form-label">分页大小</label>
+          <el-input v-model="state.pagesize" placeholder="页面分页大小" />
         </div>
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-foreground">Cookie过期天数</label>
-          <Input v-model="state.cookieExpDays" type="number" min="1" max="365" placeholder="Cookie过期天数（默认1天）" />
+        <div class="app-form-field">
+          <label class="app-form-label">Cookie过期天数</label>
+          <el-input v-model="state.cookieExpDays" type="number" min="1" max="365" placeholder="Cookie过期天数（默认1天）" />
         </div>
       </div>
-    </div>
+    </el-card>
 
-    <div class="rounded-lg border weak-divider p-4 space-y-3 bg-background/70 dark:bg-muted/30">
-      <div class="text-sm font-semibold">渠道测试默认文案</div>
-      <div class="space-y-2">
-        <label class="text-sm font-medium text-foreground">测试消息正文</label>
-        <Textarea
+    <el-card shadow="never" class="settings-section-card">
+      <div class="settings-card-heading">
+        <div class="settings-card-title">渠道测试默认文案</div>
+      </div>
+      <div class="app-form-field">
+        <el-input
           v-model="state.channel_test_message"
-          :max-length="2000"
-          rows="4"
+          type="textarea"
+          maxlength="2000"
+          :rows="4"
           placeholder="请输入渠道测试按钮默认发送的消息正文"
         />
-        <div class="flex items-center justify-between text-xs text-muted-foreground">
-          <span>用于“渠道管理-新增/编辑渠道”右下角测试按钮的默认消息内容。</span>
+        <div class="settings-field-meta">
           <span>{{ state.channel_test_message.length }}/2000</span>
         </div>
       </div>
-    </div>
+    </el-card>
 
-    <div class="flex items-center justify-between pt-2 border-t weak-divider">
+    <div class="settings-form-actions">
       <div class="flex items-center space-x-2">
-        <span class="text-sm text-muted-foreground">说明</span>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger>
-              <QuestionCircleOutlined class="text-[14px] text-muted-foreground hover:text-foreground transition-colors duration-[var(--motion-fast)]" />
-            </TooltipTrigger>
-            <TooltipContent class="max-w-sm">
-              <div class="text-sm space-y-1">
-                <p>1. logo请输入svg文本，替换后登录页面，ico，导航栏logo将全部一起更换</p>
-                <p>2. slogan将在登录页面展示</p>
-                <p>3. Cookie过期天数设置用户登录后的有效期，修改后下次登录时生效</p>
-                <p>4. 修改后在下次登录时生效，如不生效请在登录页面Ctrl+F5强制刷新</p>
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <span class="settings-option-description">说明</span>
+        <el-tooltip placement="top" popper-class="max-w-sm">
+          <QuestionCircleOutlined class="text-[14px] text-muted-foreground hover:text-foreground transition-colors duration-[var(--motion-fast)]" />
+          <template #content>
+            <div class="text-sm space-y-1">
+              <p>1. logo请输入svg文本，替换后登录页面，ico，导航栏logo将全部一起更换</p>
+              <p>2. slogan将在登录页面展示</p>
+              <p>3. Cookie过期天数设置用户登录后的有效期，修改后下次登录时生效</p>
+              <p>4. 修改后在下次登录时生效，如不生效请在登录页面Ctrl+F5强制刷新</p>
+            </div>
+          </template>
+        </el-tooltip>
       </div>
       <div class="flex space-x-2">
-        <Button variant="outline" size="sm" @click="handleSubmitReset">恢复默认</Button>
-        <Button size="sm" @click="handleSubmit">确定</Button>
+        <el-button size="small" @click="handleSubmitReset">恢复默认</el-button>
+        <el-button size="small" type="primary" @click="handleSubmit">确定</el-button>
       </div>
     </div>
   </div>
 
   <!-- 清空Logo确认弹窗 -->
-  <Dialog :open="clearLogoConfirmOpen" @update:open="(value) => clearLogoConfirmOpen = value">
-    <DialogContent class="max-w-[420px]">
-      <DialogHeader>
-        <DialogTitle>确认恢复默认站点图标</DialogTitle>
-      </DialogHeader>
+  <el-dialog v-model="clearLogoConfirmOpen" title="确认恢复默认站点图标" width="min(420px, calc(100dvw - 24px))" class="app-nested-dialog" append-to-body>
       <div class="space-y-2 text-sm text-foreground/80">
         <div>恢复后站点将使用默认图标。</div>
         <div v-if="clearLogoDeleteSource" class="text-red-500">同时会删除存储中的源文件，此操作不可恢复。</div>
       </div>
-      <DialogFooter>
-        <Button type="button" variant="outline" :disabled="logoClearing" @click="clearLogoConfirmOpen = false">取消</Button>
-        <Button type="button" :disabled="logoClearing" @click="clearSiteLogo">{{ logoClearing ? '恢复中...' : '确认恢复' }}</Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
+      <template #footer>
+        <el-button :disabled="logoClearing" @click="clearLogoConfirmOpen = false">取消</el-button>
+        <el-button type="primary" :disabled="logoClearing" :loading="logoClearing" @click="clearSiteLogo">确认恢复</el-button>
+      </template>
+  </el-dialog>
 
   <!-- 从存储浏览选择站点图标 -->
-  <Dialog :open="logoBrowseDialogOpen" @update:open="(value) => logoBrowseDialogOpen = value">
-    <DialogContent class="w-[min(855px,98vw)] !max-w-[98vw] sm:!max-w-[98vw] max-h-[90vh] overflow-hidden flex flex-col">
-      <DialogHeader class="flex-shrink-0 border-b border-[var(--line-weak)] pb-3">
-        <DialogTitle>从存储选择站点图标</DialogTitle>
-      </DialogHeader>
-      <div class="flex-1 overflow-y-auto mt-4 space-y-3">
-        <div class="text-sm text-muted-foreground">
-          当前存储：{{ selectedLogoStorageProfile?.name || '-' }}（{{ selectedLogoStorageProfile?.provider === 's3' ? 'S3' : '本地' }} / {{ state.logo_storage_profile_id || '-' }}）
-        </div>
-        <div class="min-w-0 overflow-x-auto whitespace-nowrap pb-1 text-sm text-muted-foreground">
+  <el-dialog v-model="logoBrowseDialogOpen" title="从存储选择站点图标" width="min(880px, calc(100dvw - 24px))" class="site-logo-browse-dialog app-file-browser-dialog app-nested-dialog" append-to-body>
+      <div class="app-file-browser">
+        <section class="app-file-browser-metadata" aria-label="当前存储信息">
+          <span class="app-file-browser-metadata__icon" aria-hidden="true">
+            <CloudServerOutlined />
+          </span>
+          <div class="app-file-browser-metadata__copy" :title="selectedLogoStorageProfile?.name || ''">
+            <strong>{{ selectedLogoStorageProfile?.name || '-' }}</strong>
+            <small>{{ selectedLogoStorageProfile?.provider === 's3' ? 'S3' : '本地' }} · {{ state.logo_storage_profile_id || '-' }}</small>
+          </div>
+        </section>
+        <div class="app-file-browser-breadcrumb">
+          <span class="app-file-browser-breadcrumb__label">当前目录：</span>
+          <div class="app-file-browser-breadcrumb__track">
           <button
             v-for="(crumb, index) in logoBrowseBreadcrumbs"
             :key="`${crumb.path || 'logo-root'}-${index}`"
             type="button"
-            class="inline-flex items-center gap-1 hover:text-brand-600 mr-1"
+            class="storage-breadcrumb-button inline-flex items-center gap-1 mr-1"
             :disabled="logoBrowseLoading"
             @click="openLogoBrowseBreadcrumb(crumb.path)"
           >
@@ -974,157 +743,73 @@ export default {
             <FolderOutlined v-if="index === 0" class="text-[13px]" />
             <span class="max-w-[220px] truncate align-bottom">{{ crumb.label }}</span>
           </button>
-        </div>
-        <div class="grid grid-cols-[auto_minmax(240px,1fr)_auto_auto] items-center gap-2">
-          <Button type="button" variant="outline" size="sm" :disabled="!logoBrowseCurrentPath || logoBrowseLoading" @click="openLogoBrowseParent">
-            返回上级
-          </Button>
-          <Input v-model="logoBrowseKeyword" class="h-8 w-full" placeholder="按名称筛选目录/图片" />
-          <div class="inline-flex items-center gap-1 rounded border weak-divider p-1">
-            <button
-              type="button"
-              class="px-2 py-1 text-xs rounded"
-              :class="logoBrowseViewMode === 'list' ? 'bg-brand-50 text-brand-600 dark:bg-muted/70 dark:text-brand-300' : 'text-muted-foreground'"
-              @click="logoBrowseViewMode = 'list'"
-            >
-              列表
-            </button>
-            <button
-              type="button"
-              class="px-2 py-1 text-xs rounded"
-              :class="logoBrowseViewMode === 'thumb' ? 'bg-brand-50 text-brand-600 dark:bg-muted/70 dark:text-brand-300' : 'text-muted-foreground'"
-              @click="logoBrowseViewMode = 'thumb'"
-            >
-              缩略图
-            </button>
-          </div>
-          <div
-            class="inline-flex w-[132px] items-center gap-1 rounded border weak-divider p-1 transition-opacity"
-            :class="logoBrowseViewMode === 'thumb' ? 'opacity-100' : 'opacity-0 pointer-events-none'"
-          >
-            <button
-              type="button"
-              class="px-2 py-1 text-xs rounded"
-              :class="logoBrowseThumbSize === 'sm' ? 'bg-brand-50 text-brand-600 dark:bg-muted/70 dark:text-brand-300' : 'text-muted-foreground'"
-              @click="logoBrowseThumbSize = 'sm'"
-            >
-              小
-            </button>
-            <button
-              type="button"
-              class="px-2 py-1 text-xs rounded"
-              :class="logoBrowseThumbSize === 'md' ? 'bg-brand-50 text-brand-600 dark:bg-muted/70 dark:text-brand-300' : 'text-muted-foreground'"
-              @click="logoBrowseThumbSize = 'md'"
-            >
-              中
-            </button>
-            <button
-              type="button"
-              class="px-2 py-1 text-xs rounded"
-              :class="logoBrowseThumbSize === 'lg' ? 'bg-brand-50 text-brand-600 dark:bg-muted/70 dark:text-brand-300' : 'text-muted-foreground'"
-              @click="logoBrowseThumbSize = 'lg'"
-            >
-              大
-            </button>
           </div>
         </div>
-        <div v-if="logoBrowseViewMode === 'list'" class="space-y-3">
-          <div class="rounded-md border">
-            <div class="px-3 py-2 border-b text-xs text-muted-foreground">目录（{{ filteredLogoBrowseDirectories.length }}）</div>
-            <div class="max-h-40 overflow-y-auto divide-y">
-              <button
-                v-for="item in filteredLogoBrowseDirectories"
-                :key="item.relative_path"
-                type="button"
-                class="w-full text-left px-3 py-2 hover:bg-muted/50"
-                @click="openLogoBrowseChild(item)"
-              >
-                <div class="text-sm flex items-center gap-2"><FolderOutlined class="text-[16px]" />{{ item.name }}</div>
-                <div class="text-xs text-muted-foreground">/{{ item.relative_path }}</div>
-              </button>
-              <div v-if="!filteredLogoBrowseDirectories.length" class="px-3 py-3 text-xs text-muted-foreground">暂无目录</div>
+        <div class="app-file-browser-toolbar">
+          <el-button class="app-file-browser-toolbar__back" native-type="button" size="small" :disabled="!logoBrowseCurrentPath || logoBrowseLoading" @click="openLogoBrowseParent">返回上级</el-button>
+          <el-input v-model="logoBrowseKeyword" class="app-file-browser-toolbar__search" placeholder="按名称筛选目录/图片" />
+          <div class="app-segmented app-file-browser-toolbar__view" role="group" aria-label="浏览视图">
+            <button type="button" class="storage-segment-button" :class="logoBrowseViewMode === 'list' ? 'storage-segment-button-active' : 'storage-segment-button-idle'" :aria-pressed="logoBrowseViewMode === 'list'" @click="logoBrowseViewMode = 'list'">列表</button>
+            <button type="button" class="storage-segment-button" :class="logoBrowseViewMode === 'thumb' ? 'storage-segment-button-active' : 'storage-segment-button-idle'" :aria-pressed="logoBrowseViewMode === 'thumb'" @click="logoBrowseViewMode = 'thumb'">缩略图</button>
+          </div>
+          <div v-if="logoBrowseViewMode === 'thumb'" class="app-segmented app-file-browser-toolbar__size" role="group" aria-label="缩略图尺寸">
+            <button v-for="size in (['sm', 'md', 'lg'] as const)" :key="size" type="button" class="storage-segment-button" :class="logoBrowseThumbSize === size ? 'storage-segment-button-active' : 'storage-segment-button-idle'" :aria-pressed="logoBrowseThumbSize === size" @click="logoBrowseThumbSize = size">{{ size === 'sm' ? '小' : size === 'md' ? '中' : '大' }}</button>
+          </div>
+        </div>
+        <div class="storage-browser-list app-file-browser-content">
+          <div v-if="logoBrowseLoading" class="app-file-browser-state" role="status">正在读取当前目录…</div>
+          <template v-else-if="logoBrowseViewMode === 'list'">
+            <button v-for="item in filteredLogoBrowseDirectories" :key="item.relative_path" type="button" class="storage-browser-row app-file-browser-row app-file-browser-row--directory" @click="openLogoBrowseChild(item)">
+              <span class="app-file-browser-row-main"><span class="app-file-browser-folder-icon"><FolderOutlined /></span><span class="app-file-browser-row-copy"><strong>{{ item.name }}</strong><small>/{{ item.relative_path }}</small></span></span>
+            </button>
+            <div v-for="file in filteredLogoBrowseFiles" :key="file.object_key || file.relative_path" class="storage-browser-row app-file-browser-row">
+              <div class="app-file-browser-row-main"><span class="app-file-browser-row-copy"><strong>{{ file.name }}</strong><small>{{ selectedLogoStorageProfile?.provider === 's3' ? (file.object_key || file.relative_path) : file.relative_path }}</small></span></div>
+              <div class="app-file-browser-row-actions"><el-button native-type="button" size="small" type="primary" @click="applyLogoFromBrowse(file)">使用</el-button></div>
             </div>
-          </div>
-          <div class="rounded-md border">
-            <div class="px-3 py-2 border-b text-xs text-muted-foreground">图片文件（{{ filteredLogoBrowseFiles.length }}）</div>
-            <div class="max-h-56 overflow-y-auto divide-y">
-              <div
-                v-for="file in filteredLogoBrowseFiles"
-                :key="file.object_key || file.relative_path"
-                class="px-3 py-2 flex items-center justify-between gap-3"
-              >
-                <div class="min-w-0">
-                  <div class="text-sm truncate">{{ file.name }}</div>
-                  <div class="text-xs text-muted-foreground truncate">
-                    {{ selectedLogoStorageProfile?.provider === 's3' ? (file.object_key || file.relative_path) : file.relative_path }}
-                  </div>
-                </div>
-                <Button type="button" size="sm" @click="applyLogoFromBrowse(file)">使用</Button>
-              </div>
-              <div v-if="!filteredLogoBrowseFiles.length" class="px-3 py-3 text-xs text-muted-foreground">当前目录暂无可用图片文件</div>
-            </div>
-          </div>
-        </div>
-        <div v-else class="rounded border weak-divider max-h-[56vh] overflow-y-auto p-3 space-y-3">
-          <div v-if="filteredLogoBrowseDirectories.length > 0" class="grid grid-cols-2 md:grid-cols-3 gap-2">
-            <button
-              v-for="item in filteredLogoBrowseDirectories"
-              :key="`thumb-dir-${item.relative_path}`"
-              type="button"
-              class="rounded border weak-divider px-3 py-2 text-left hover:bg-muted/60 dark:hover:bg-muted/30"
-              @click="openLogoBrowseChild(item)"
-            >
-              <div class="inline-flex h-8 w-8 items-center justify-center rounded border border-brand-200 bg-brand-50 text-brand-600 dark:border-brand-700/60 dark:bg-brand-900/30 dark:text-brand-300">
-                <FolderOutlined class="text-[16px]" />
-              </div>
-              <div class="mt-1 text-sm truncate font-medium">{{ item.name }}</div>
+          </template>
+          <template v-else>
+          <div v-if="filteredLogoBrowseDirectories.length > 0" class="app-file-browser-grid app-file-browser-grid--directories">
+            <button v-for="item in filteredLogoBrowseDirectories" :key="`thumb-dir-${item.relative_path}`" type="button" class="storage-thumb-dir-card app-file-browser-directory-card" @click="openLogoBrowseChild(item)">
+              <span class="app-file-browser-folder-icon"><FolderOutlined /></span><strong>{{ item.name }}</strong>
             </button>
           </div>
           <div :class="logoBrowseThumbGridClass">
             <div
               v-for="file in logoBrowseThumbFiles"
               :key="`thumb-file-${file.object_key || file.relative_path}`"
-              class="rounded border weak-divider p-2 space-y-2"
+              class="storage-thumb-file-card app-file-browser-card"
             >
               <div :class="logoBrowseThumbPreviewClass">
-                <img
-                  v-if="file.can_preview"
-                  :src="file.preview_url"
-                  class="w-full h-full object-cover"
-                  :alt="file.name"
-                >
-                <div v-else class="text-xs text-muted-foreground">无预览</div>
+                <img v-if="file.can_preview" :src="file.preview_url" :alt="file.name">
+                <div v-else>无预览</div>
               </div>
-              <div class="text-xs">
-                <div class="truncate font-medium" :title="file.name">{{ file.name }}</div>
-                <div class="text-muted-foreground truncate" :title="file.label">{{ file.label }}</div>
-              </div>
-              <div class="flex items-center justify-end">
-                <Button type="button" size="sm" class="h-7 px-2" @click="applyLogoFromBrowse(file)">使用</Button>
+              <div class="app-file-browser-card-copy"><strong :title="file.name">{{ file.name }}</strong><small :title="file.label">{{ file.label }}</small></div>
+              <div class="app-file-browser-card-actions">
+                <el-button native-type="button" size="small" type="primary" @click="applyLogoFromBrowse(file)">使用</el-button>
               </div>
             </div>
           </div>
-          <div v-if="!logoBrowseLoading && filteredLogoBrowseDirectories.length === 0 && logoBrowseThumbFiles.length === 0" class="px-3 py-6 text-sm text-muted-foreground text-center">
-            当前路径下暂无内容
+          </template>
+          <div v-if="!logoBrowseLoading && filteredLogoBrowseDirectories.length === 0 && filteredLogoBrowseFiles.length === 0" class="app-file-browser-state app-file-browser-state--empty">
+            <FolderOutlined /><strong>当前路径下没有可用图片</strong><span>可返回上级目录或调整筛选条件</span>
           </div>
         </div>
       </div>
-      <DialogFooter class="flex-shrink-0 border-t border-[var(--line-weak)] pt-3">
-        <Button type="button" variant="outline" @click="logoBrowseDialogOpen = false">关闭</Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
+      <template #footer>
+        <el-button @click="logoBrowseDialogOpen = false">关闭</el-button>
+      </template>
+  </el-dialog>
 
   <!-- Logo裁剪弹窗 -->
-  <Dialog :open="logoCropDialogOpen" @update:open="(value) => { if (!value) closeLogoCropDialog() }">
-    <DialogContent class="max-w-[560px]">
-      <DialogHeader>
-        <DialogTitle>裁剪站点图标</DialogTitle>
-      </DialogHeader>
-      <div class="space-y-3">
-        <div class="text-xs text-muted-foreground">{{ logoCropImageName }}</div>
+  <el-dialog :model-value="logoCropDialogOpen" title="裁剪站点图标" width="min(560px, calc(100dvw - 24px))" class="site-logo-crop-dialog app-nested-dialog" append-to-body @update:model-value="(value: boolean) => { if (!value) closeLogoCropDialog() }">
+      <div class="site-logo-crop-content">
+        <div class="site-logo-crop-toolbar">
+          <strong :title="logoCropImageName || '待裁剪图片'">{{ logoCropImageName || '待裁剪图片' }}</strong>
+          <span>输出 128 × 128 PNG</span>
+          <p>拖动调整取景，使用滚轮或下方控件缩放；方框内内容将作为站点图标。</p>
+        </div>
         <div
-          class="w-[260px] h-[260px] border rounded-md overflow-hidden relative bg-muted dark:bg-muted/20 mx-auto touch-none select-none"
+          class="site-logo-crop-frame w-[260px] h-[260px] overflow-hidden relative mx-auto touch-none select-none"
           @pointerdown="onLogoCropPointerDown"
           @pointermove="onLogoCropPointerMove"
           @pointerup="stopLogoCropDragging"
@@ -1154,23 +839,30 @@ export default {
             <span>{{ Math.round(logoCropScale * 100) }}%</span>
           </div>
           <div class="flex items-center gap-2">
-            <Button type="button" variant="outline" size="sm" @click="zoomOutLogoCrop">-</Button>
-            <Input
+            <el-button native-type="button" size="small" @click="zoomOutLogoCrop">-</el-button>
+            <el-input
               type="range"
               :min="logoCropMinScale"
               :max="logoCropMaxScale"
               :step="0.01"
               :model-value="logoCropScale"
-              @update:model-value="(value) => applyLogoCropScale(Number(value))"
+              @update:model-value="(value: string | number) => applyLogoCropScale(Number(value))"
             />
-            <Button type="button" variant="outline" size="sm" @click="zoomInLogoCrop">+</Button>
+            <el-button native-type="button" size="small" @click="zoomInLogoCrop">+</el-button>
           </div>
         </div>
       </div>
-      <DialogFooter>
-        <Button type="button" variant="outline" :disabled="logoUploading" @click="closeLogoCropDialog">取消</Button>
-        <Button type="button" :disabled="logoUploading" @click="confirmLogoCropAndUpload">{{ logoUploading ? '上传中...' : '裁剪并上传' }}</Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
+      <template #footer>
+        <el-button :disabled="logoUploading" @click="closeLogoCropDialog">取消</el-button>
+        <el-button type="primary" :disabled="logoUploading" :loading="logoUploading" @click="confirmLogoCropAndUpload">裁剪并上传</el-button>
+      </template>
+  </el-dialog>
 </template>
+
+<style scoped>
+.site-logo-crop-content { display: grid; gap: 12px; }
+.site-logo-crop-toolbar { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; padding-bottom: 10px; border-bottom: 1px solid var(--app-overlay-border); }
+.site-logo-crop-toolbar strong { max-width: 240px; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.site-logo-crop-toolbar span { color: var(--admin-text-muted); font-size: 10px; }
+.site-logo-crop-toolbar p { width: 100%; margin: 0; color: var(--admin-text-muted); font-size: 11px; line-height: 1.55; }
+</style>

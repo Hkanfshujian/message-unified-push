@@ -2,11 +2,11 @@ package api
 
 import (
 	"fmt"
+	"net/http"
+	"net/url"
 	"ops-message-unified-push/models"
 	"ops-message-unified-push/pkg/setting"
 	"ops-message-unified-push/service/casdoor_service"
-	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -38,12 +38,12 @@ func CasdoorLogin(c *gin.Context) {
 	c.Redirect(http.StatusFound, authURL)
 }
 
-// CasdoorCallback 处理 Casdoor 回调
-func CasdoorCallback(c *gin.Context) {
+// CompleteCasdoorLogin handles the authorization response from Casdoor.
+func CompleteCasdoorLogin(c *gin.Context) {
 	// 异常恢复
 	defer func() {
 		if r := recover(); r != nil {
-			logrus.Errorf("[Casdoor] Callback panic: %v", r)
+			logrus.Errorf("[Casdoor] authorization response panic: %v", r)
 			c.Redirect(http.StatusFound, buildCasdoorErrorRedirect("服务器内部错误"))
 		}
 	}()
@@ -86,7 +86,7 @@ func CasdoorCallback(c *gin.Context) {
 	}
 
 	// 处理回调
-	localToken, user, err := service.HandleCallback(c.Request.Context(), code)
+	localToken, user, err := service.CompleteLogin(c.Request.Context(), code)
 	if err != nil {
 		logrus.Errorf("[Casdoor] 回调处理失败: %v", err)
 		c.Redirect(http.StatusFound, buildCasdoorErrorRedirect(err.Error()))
@@ -167,8 +167,8 @@ func CasdoorLogout(c *gin.Context) {
 	})
 }
 
-// CasdoorLogoutCallback 登出回调
-func CasdoorLogoutCallback(c *gin.Context) {
+// CompleteCasdoorLogout returns the browser to the local login page.
+func CompleteCasdoorLogout(c *gin.Context) {
 	pathPrefix := getURLPrefix()
 	target := pathPrefix + "/#/login?casdoor_logout=1"
 	c.Redirect(http.StatusFound, target)

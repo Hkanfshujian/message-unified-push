@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
-import { toast } from 'vue-sonner'
-import { request } from '@/api/api'
+import { scheduledMessagesApi } from '@/api/scheduledMessages'
+import { notifyError, notifySuccess } from '@/util/uiFeedback'
 import CronMessageForm from './CronMessageForm.vue'
 
 interface Props {
@@ -34,6 +34,18 @@ const loading = ref(false)
 
 // 提交表单
 const handleSubmit = async () => {
+  if (!formData.name.trim()) {
+    notifyError('请输入定时消息名称')
+    return
+  }
+  if (!formData.template_id) {
+    notifyError('请选择关联的消息模板')
+    return
+  }
+  if (!formData.cron_expression.trim()) {
+    notifyError('请输入 Cron 表达式')
+    return
+  }
   loading.value = true
   try {
     let postData = {
@@ -44,15 +56,16 @@ const handleSubmit = async () => {
       "url": ""
     }
 
-    const rsp = await request.post('/cronmessages/addone', postData)
+    const rsp = await scheduledMessagesApi.create(postData)
     if (rsp.data.code === 200) {
-      toast.success(rsp.data.msg)
-      setTimeout(() => {
-        window.location.reload()
-      }, 1000)
+      notifySuccess(rsp.data.msg || '创建定时消息成功')
+      emit('save', postData)
+      emit('update:open', false)
     } else {
-      toast.error(rsp.data.msg)
+      notifyError(rsp.data.msg || '创建定时消息失败')
     }
+  } catch (error: any) {
+    notifyError(error?.response?.data?.msg || '创建定时消息失败')
   } finally {
     loading.value = false
   }
@@ -68,7 +81,7 @@ const handleCancel = () => {
 const handleSendNow = async () => {
   // 验证必填字段
   if (!formData.template_id) {
-    toast.error('请先选择关联的消息模板')
+    notifyError('请先选择关联的消息模板')
     return
   }
 
@@ -80,14 +93,14 @@ const handleSendNow = async () => {
       title: formData.name
     }
 
-    const rsp = await request.post('/cronmessages/sendnow', postData)
+    const rsp = await scheduledMessagesApi.sendNow(postData)
     if (rsp.data.code === 200) {
-      toast.success(rsp.data.msg)
+      notifySuccess(rsp.data.msg || '发送成功')
     } else {
-      toast.error(rsp.data.msg)
+      notifyError(rsp.data.msg || '发送失败')
     }
   } catch (error) {
-    toast.error('发送失败，请稍后重试')
+    notifyError('发送失败，请稍后重试')
   } finally {
     loading.value = false
   }
@@ -98,7 +111,6 @@ const handleSendNow = async () => {
   <CronMessageForm
     :model-value="formData"
     @update:model-value="(val) => {
-      console.log('Received update:model-value:', val);
       Object.assign(formData, val);
     }"
     mode="add"

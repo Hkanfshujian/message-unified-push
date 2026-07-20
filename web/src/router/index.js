@@ -1,11 +1,32 @@
-import { createRouter, createWebHistory, createWebHashHistory } from 'vue-router'
-// import LoginInex from '../components/Login.vue'
+import { createRouter, createWebHashHistory } from 'vue-router'
 import { CONSTANT } from '../constant'
 import axios from 'axios'
 import config from '../../config.js'
 import { clearAuthzDataStorage, hasAnyPermissionFromStorage, readAuthzDataFromStorage, writeAuthzDataToStorage } from '@/util/rbacAuthz'
-import { getFirstAccessibleRoutePath, LEGACY_SETTINGS_PATH, PROFILE_SETTINGS_PATH, SYSTEM_SETTINGS_PATH, resolveLegacySettingsRedirect } from './guard-utils'
+import { getFirstAccessibleRoutePath, isNotFoundRoute, LEGACY_SETTINGS_PATH, PROFILE_SETTINGS_PATH, resolveLegacySettingsRedirect, normalizeRequiredPermissions, resolveAuthRedirect, resolvePermissionDeniedRoute } from './guard-utils'
 import { profileSettingsChildren, systemSettingsChildren } from './settings-route-config'
+
+const lazyPage = (loader) => loader
+
+const LoginPage = lazyPage(() => import('../components/Login.vue'))
+const IndexPage = lazyPage(() => import('../components/Index.vue'))
+const NotFoundPage = lazyPage(() => import('../components/404.vue'))
+const DashboardPage = lazyPage(() => import('../components/pages/dashboard/Dashboard.vue'))
+const SendLogsPage = lazyPage(() => import('../components/pages/sendLogs/SendLogs.vue'))
+const LoginLogsPage = lazyPage(() => import('../components/pages/settings/LoginLogs.vue'))
+const SystemSettingsPage = lazyPage(() => import('../components/pages/systemManagement/SystemSettings.vue'))
+const ProfileSettingsPage = lazyPage(() => import('../components/pages/profile/ProfileSettings.vue'))
+const SendWaysPage = lazyPage(() => import('../components/pages/sendWays/SendWays.vue'))
+const CronMessagesPage = lazyPage(() => import('../components/pages/cronMessages/CronMessages.vue'))
+const MessageTemplatePage = lazyPage(() => import('../components/pages/messageTemplate/MessageTemplate.vue'))
+const RolesManagementPage = lazyPage(() => import('../components/pages/systemManagement/RolesManagement.vue'))
+const GroupsManagementPage = lazyPage(() => import('../components/pages/systemManagement/GroupsManagement.vue'))
+const PermissionsManagementPage = lazyPage(() => import('../components/pages/systemManagement/PermissionsManagement.vue'))
+const UsersManagementPage = lazyPage(() => import('../components/pages/systemManagement/UsersManagement.vue'))
+const SystemMessagesManagementPage = lazyPage(() => import('../components/pages/systemManagement/SystemMessagesManagement.vue'))
+const MQSourcesPage = lazyPage(() => import('../components/pages/dataManagement/MQSources.vue'))
+const SubscriptionsPage = lazyPage(() => import('../components/pages/subscriptions/Subscriptions.vue'))
+const ConsumeLogsPage = lazyPage(() => import('../components/pages/consumeLogs/ConsumeLogs.vue'))
 
 const router = createRouter({
   // 使用 HTML5 History 模式，确保 URL 变化反映在浏览器地址栏中
@@ -14,7 +35,7 @@ const router = createRouter({
     {
       path: '/login',
       name: 'login',
-      component:() => import('../components/Login.vue')
+      component: LoginPage
     },
     {
       // 兼容历史链接：/sendlogs -> /logs/task
@@ -24,13 +45,13 @@ const router = createRouter({
     {
       path: '/',
       name: 'index',
-      component: () => import('../components/Index.vue'),
+      component: IndexPage,
       children: [
         {
           // 默认子路由，显示 Dashboard
           path: '',
           name: 'dashboard',
-          component: () => import('../components/pages/dashboard/Dashboard.vue'),
+          component: DashboardPage,
           meta: { requiredPermissions: ['dashboard:view'] }
         },
         {
@@ -42,75 +63,85 @@ const router = createRouter({
         {
           path: 'logs/task',
           name: 'logs-task',
-          component: () => import('../components/pages/sendLogs/SendLogs.vue'),
+          component: SendLogsPage,
           meta: { requiredPermissions: ['message:sendlogs:view'] }
         },
         {
           path: 'logs/login',
           name: 'logs-login',
-          component: () => import('../components/pages/settings/LoginLogs.vue'),
+          component: LoginLogsPage,
           meta: { requiredPermissions: ['system:loginlogs:view'] }
         },
         {
           path: 'settings',
           name: 'settings-legacy',
-          component: () => import('../components/pages/profile/ProfileSettings.vue')
+          component: ProfileSettingsPage
+        },
+        {
+          path: 'system/settings/messages',
+          redirect: to => ({ path: '/system/messages', query: to.query })
         },
         {
           path: 'system/settings',
           name: 'system-settings',
-          component: () => import('../components/pages/systemManagement/SystemSettings.vue'),
+          component: SystemSettingsPage,
           meta: { requiredPermissions: ['system:settings:view'] },
           children: systemSettingsChildren
         },
         {
           path: 'profile/settings',
           name: 'profile-settings',
-          component: () => import('../components/pages/profile/ProfileSettings.vue'),
+          component: ProfileSettingsPage,
           meta: { requiredPermissions: ['profile:settings:view'] },
           children: profileSettingsChildren
         },
         {
           path: 'sendways',
           name: 'sendways',
-          component: () => import('../components/pages/sendWays/SendWays.vue'),
+          component: SendWaysPage,
           meta: { requiredPermissions: ['message:sendways:view'] }
         },
         {
           path: 'cronmessages',
           name: 'cronmessages',
-          component: () => import('../components/pages/cronMessages/CronMessages.vue'),
+          component: CronMessagesPage,
           meta: { requiredPermissions: ['message:cron:view'] }
         },
         {
           path: 'templates',
           name: 'templates',
-          component: () => import('../components/pages/messageTemplate/MessageTemplate.vue'),
+          component: MessageTemplatePage,
           meta: { requiredPermissions: ['message:template:view'] }
         },
         {
           path: 'system/roles',
           name: 'system-roles',
-          component: () => import('../components/pages/systemManagement/RolesManagement.vue'),
+          component: RolesManagementPage,
           meta: { requiredPermissions: ['system:rbac:role'] }
         },
         {
           path: 'system/groups',
           name: 'system-groups',
-          component: () => import('../components/pages/systemManagement/GroupsManagement.vue'),
+          component: GroupsManagementPage,
           meta: { requiredPermissions: ['system:rbac:group'] }
         },
         {
           path: 'system/permissions',
           name: 'system-permissions',
-          component: () => import('../components/pages/systemManagement/PermissionsManagement.vue'),
+          component: PermissionsManagementPage,
           meta: { requiredPermissions: ['system:rbac:permission'] }
         },
         {
           path: 'system/users',
           name: 'system-users',
-          component: () => import('../components/pages/systemManagement/UsersManagement.vue'),
+          component: UsersManagementPage,
           meta: { requiredPermissions: ['system:rbac:user'] }
+        },
+        {
+          path: 'system/messages',
+          name: 'system-messages',
+          component: SystemMessagesManagementPage,
+          meta: { requiredPermissions: ['message:system:view'] }
         },
         {
           path: 'system/relations',
@@ -121,19 +152,19 @@ const router = createRouter({
         {
           path: 'data/mq-sources',
           name: 'data-mq-sources',
-          component: () => import('../components/pages/dataManagement/MQSources.vue'),
+          component: MQSourcesPage,
           meta: { requiredPermissions: ['data:mq-source:view'] }
         },
         {
           path: 'message/subscriptions',
           name: 'message-subscriptions',
-          component: () => import('../components/pages/subscriptions/Subscriptions.vue'),
+          component: SubscriptionsPage,
           meta: { requiredPermissions: ['data:subscription:view'] }
         },
         {
           path: 'logs/consume',
           name: 'logs-consume',
-          component: () => import('../components/pages/consumeLogs/ConsumeLogs.vue'),
+          component: ConsumeLogsPage,
           meta: { requiredPermissions: ['data:consume-log:view'] }
         }
       ]
@@ -146,7 +177,7 @@ const router = createRouter({
     {
       path: '/:catchAll(.*)',
       name: '404',
-      component: () => import('../components/404.vue')
+      component: NotFoundPage
     },
   ]
 })
@@ -180,27 +211,28 @@ const ensureAuthzLoaded = async (token) => {
 
 const getFirstAccessibleRoute = () => getFirstAccessibleRoutePath(hasAnyPermissionFromStorage)
 
+const clearAuthSession = () => {
+  localStorage.removeItem(CONSTANT.STORE_TOKEN_NAME)
+  localStorage.removeItem(CONSTANT.STORE_AUTH_SOURCE_NAME)
+  localStorage.removeItem(CONSTANT.STORE_OPEN_TABS_NAME || '__message_nest_open_tabs_v1')
+  clearAuthzDataStorage()
+}
+
 // 登录失效重定向到登录页面
 router.beforeEach(async (to, from, next) => {
   const token = localStorage.getItem(CONSTANT.STORE_TOKEN_NAME);
   const isAuthenticated = Boolean(token && token.trim() !== '');
 
   // 404页面不需要登录验证
-  if (to.name === '404') {
+  if (isNotFoundRoute(to.name)) {
     next();
     return;
   }
   
-  // 如果没有token且不是访问登录页，跳转到登录页
-  if (!isAuthenticated && to.path !== '/login') {
-    next('/login');
-  } 
-  // 如果有token且访问登录页，跳转到首页
-  else if (isAuthenticated && to.path === '/login') {
-    next('/');
-  } 
-  // 其他情况正常访问
-  else {
+  const authRedirect = resolveAuthRedirect(isAuthenticated, to.path);
+  if (authRedirect) {
+    next({ path: authRedirect, query: { reason: 'required', redirect: to.fullPath } });
+  } else {
     if (to.path === LEGACY_SETTINGS_PATH) {
       const loaded = await ensureAuthzLoaded(token);
       if (!loaded) {
@@ -210,26 +242,16 @@ router.beforeEach(async (to, from, next) => {
       next(resolveLegacySettingsRedirect(hasAnyPermissionFromStorage(['system:settings:view'])));
       return;
     }
-    const requiredPermissions = to.meta?.requiredPermissions;
-    if (Array.isArray(requiredPermissions) && requiredPermissions.length > 0) {
+    const requiredPermissions = normalizeRequiredPermissions(to.meta?.requiredPermissions);
+    if (requiredPermissions.length > 0) {
       const loaded = await ensureAuthzLoaded(token);
       if (!loaded) {
-        localStorage.removeItem(CONSTANT.STORE_TOKEN_NAME);
-        localStorage.removeItem(CONSTANT.STORE_AUTH_SOURCE_NAME);
-        localStorage.removeItem(CONSTANT.STORE_OPEN_TABS_NAME || '__message_nest_open_tabs_v1');
-        clearAuthzDataStorage();
-        next('/login');
+        clearAuthSession();
+        next({ path: '/login', query: { reason: 'expired', redirect: to.fullPath } });
         return;
       }
       if (!hasAnyPermissionFromStorage(requiredPermissions)) {
-        if (to.path === '/' || to.name === 'dashboard') {
-          const fallbackRoute = getFirstAccessibleRoute();
-          if (fallbackRoute && fallbackRoute !== to.path) {
-            next(fallbackRoute);
-            return;
-          }
-        }
-        next('/404');
+        next(resolvePermissionDeniedRoute(to.path, to.name, getFirstAccessibleRoute));
         return;
       }
     }

@@ -6,7 +6,10 @@ import {
   InfoCircleOutlined,
   HistoryOutlined,
   SafetyCertificateOutlined,
-  CheckOutlined
+  CheckOutlined,
+  LoginOutlined,
+  CloudServerOutlined,
+  ApiOutlined
 } from '@ant-design/icons-vue'
 
 interface Props {
@@ -25,6 +28,9 @@ const settingsMenu = [
   { id: 'clean', name: '数据清理', icon: DeleteOutlined, description: '清理历史数据与日志' },
   { id: 'loginlogs', name: '登录日志', icon: HistoryOutlined, description: '查看最近登录记录' },
   { id: 'site', name: '站点设置', icon: SettingOutlined, description: '配置站点标题与基础信息' },
+  { id: 'auth', name: '认证设置', icon: LoginOutlined, description: '配置注册与单点登录' },
+  { id: 'storage', name: '存储设置', icon: CloudServerOutlined, description: '管理文件存储配置' },
+  { id: 'mqStatusPolicy', name: 'MQ 状态策略', icon: ApiOutlined, description: '配置 MQ 订阅状态策略' },
   { id: 'tokenTool', name: '加解密工具', icon: SafetyCertificateOutlined, description: '管理 Token 编解码工具' },
   { id: 'about', name: '站点关于', icon: InfoCircleOutlined, description: '查看版本信息与说明' }
 ]
@@ -61,7 +67,7 @@ export default {
 
 <template>
   <div class="w-full h-full">
-    <div class="mb-4">
+    <div class="mb-4 hidden lg:block">
       <h2 class="text-[16px] font-semibold text-foreground">
         设置
       </h2>
@@ -75,21 +81,22 @@ export default {
       tabindex="0"
       @keydown="handleKeydown"
     >
-      <button
+      <el-button
         v-for="item in settingsMenu"
         :key="item.id"
-        type="button"
+        text
+        class="settings-menu-button"
         @click="handleClick(item.id)"
         :class="[
-          'w-full flex items-center justify-between px-3 py-2 h-10 rounded-md text-sm transition-colors duration-[var(--motion-fast)] relative',
+          'w-full h-auto min-h-12 justify-between rounded-2xl border transition-all duration-[var(--motion-fast)] relative',
           props.activeTab === item.id
-            ? 'bg-brand text-white'
-            : 'text-foreground/80 hover:bg-muted'
+            ? 'border-white/50 bg-[linear-gradient(135deg,var(--brand-600),#0ea5e9)] text-white shadow-[0_14px_30px_rgba(37,99,235,0.24)]'
+            : 'border-transparent text-foreground/80 hover:border-[var(--dora-border)] hover:bg-[var(--brand-50)] hover:text-brand-700 hover:shadow-none'
         ]"
       >
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 min-w-0 text-left">
           <component :is="item.icon" class="w-4 h-4" />
-          <span>{{ item.name }}</span>
+          <span class="truncate">{{ item.name }}</span>
         </div>
         <div
           v-if="props.activeTab === item.id"
@@ -97,7 +104,18 @@ export default {
         >
           <CheckOutlined class="text-[14px] text-white" />
         </div>
-      </button>
+      </el-button>
     </nav>
   </div>
 </template>
+
+<style scoped>
+:deep(.settings-menu-button.el-button) {
+  margin-left: 0;
+  padding: 10px 12px;
+}
+
+:deep(.settings-menu-button.el-button + .settings-menu-button.el-button) {
+  margin-left: 0;
+}
+</style>

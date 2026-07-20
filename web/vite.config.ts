@@ -9,7 +9,7 @@
 
 
 import path from 'node:path'
-import tailwindcss from '@tailwindcss/vite'
+import UnoCSS from 'unocss/vite'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig, loadEnv } from 'vite'
 
@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => {
   return {
     // 使用相对路径，这样可以在任何路径下部署
     base: './',
-    plugins: [vue(), tailwindcss()],
+    plugins: [vue(), UnoCSS()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
@@ -31,6 +31,9 @@ export default defineConfig(({ mode }) => {
       'globalThis.__BUILD_TIME__': JSON.stringify(new Date().toISOString()),
     },
     server: {
+      host: '0.0.0.0',
+      port: 5173,
+      strictPort: true,
       proxy: {
         '/uploads': {
           target: proxyTarget,

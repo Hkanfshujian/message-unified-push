@@ -1,14 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
-import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { toast } from 'vue-sonner'
-import { request } from '@/api/api'
+import { subscriptionsApi } from '@/api/subscriptions'
+import { notifyError, notifySuccess, notifyWarning } from '@/util/uiFeedback'
 
 interface MQSourceOption {
   id: string
@@ -35,6 +28,7 @@ interface Props {
     template_id: string
     template_content_type?: string
     consume_mode?: string
+    status?: string
   } | null
   sourceOptions: MQSourceOption[]
   templateOptions: TemplateOption[]
@@ -46,9 +40,11 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   success: []
+  cancel: []
 }>()
 
 const isEdit = computed(() => !!props.data)
+const isRunningEdit = computed(() => props.data?.status === 'running')
 const createExtractRule = (field = '', regex = '') => ({
   field,
   regex
@@ -366,7 +362,7 @@ watch(
 // 运行正则测试
 const runRegexTest = async () => {
   if (!testMessage.value) {
-    toast.warning('请输入测试消息内容')
+    notifyWarning('请输入测试消息内容')
     return
   }
 
@@ -378,7 +374,7 @@ const runRegexTest = async () => {
 
   isTestingRegex.value = true
   try {
-    const rsp = await request.post('/subscriptions/regex-test', {
+    const rsp = await subscriptionsApi.testRegex({
       message: testMessage.value,
       validate_regex: formData.validate_regex,
       extract_rules: formData.extract_rules
@@ -423,16 +419,11 @@ const checkRuleSyntax = async () => {
   }
   isSyntaxChecking.value = true
   try {
-    await request.post('/subscriptions/regex-test', {
+    await subscriptionsApi.testRegex({
       message: testMessage.value || '{"department":"平台研发部","name":"kanfa.hu","text":"demo"}',
       validate_regex: formData.validate_regex,
       extract_rules: normalizedRules
-    }, {
-      meta: {
-        silentBizToast: true,
-        silentErrorToast: true
-      }
-    } as any)
+    })
     validateSyntaxError.value = ''
     extractSyntaxError.value = ''
   } catch (e: any) {
@@ -486,37 +477,33 @@ watch(
 const handleSubmit = async () => {
   // 验证必填项
   if (!formData.source_id) {
-    toast.warning('请选择数据源')
+    notifyWarning('请选择数据源')
     return
   }
   if (!formData.name) {
-    toast.warning('请输入订阅名称')
+    notifyWarning('请输入订阅名称')
     return
   }
   if (!formData.topic) {
-    toast.warning('请输入 Topic')
+    notifyWarning('请输入 Topic')
     return
   }
   if (!formData.group_name) {
-    toast.warning('请输入 Group Name')
+    notifyWarning('请输入 Group Name')
     return
   }
   if (!formData.template_id) {
-    toast.warning('请选择消息模板')
+    notifyWarning('请选择消息模板')
     return
   }
   await checkRuleSyntax()
   if (validateSyntaxError.value || extractSyntaxError.value) {
-    toast.warning('规则语法校验未通过，请先修正')
+    notifyWarning('规则语法校验未通过，请先修正')
     return
   }
 
   isSubmitting.value = true
   try {
-    const url = isEdit.value
-      ? `/subscriptions/${props.data?.id}/edit`
-      : '/subscriptions/add'
-    
     const payload = {
       source_id: formData.source_id,
       name: formData.name,
@@ -535,21 +522,18 @@ const handleSubmit = async () => {
       consume_mode: normalizeTemplateContentType(formData.template_content_type)
     }
 
-    const res = await request.post(url, payload, {
-      meta: {
-        silentBizToast: true,
-        silentErrorToast: true
-      }
-    } as any)
+    const res = await (isEdit.value
+      ? subscriptionsApi.update(props.data?.id || '', payload)
+      : subscriptionsApi.create(payload))
     if (res.data.code === 200) {
-      toast.success(isEdit.value ? '编辑成功' : '新增成功')
+      notifySuccess(isEdit.value ? '编辑成功' : '新增成功')
       emit('success')
     } else {
-      toast.error(normalizeRuleErrorMessage(res?.data?.msg || '操作失败'))
+      notifyError(normalizeRuleErrorMessage(res?.data?.msg || '操作失败'))
     }
   } catch (error: any) {
     const msg = error?.response?.data?.msg || '操作失败'
-    toast.error(normalizeRuleErrorMessage(msg))
+    notifyError(normalizeRuleErrorMessage(msg))
   } finally {
     isSubmitting.value = false
   }
@@ -557,16 +541,16 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <form @submit.prevent="handleSubmit" class="h-full flex flex-col min-h-0">
-    <div class="min-h-0 flex-1 grid grid-cols-1 md:grid-cols-[180px_minmax(0,1fr)]">
-      <aside class="hidden md:block border-r weak-divider bg-muted/20 p-3 overflow-y-auto">
+  <form @submit.prevent="handleSubmit" class="subscription-form-shell">
+    <div class="subscription-form-layout">
+      <aside class="app-form-side-nav subscription-form-nav">
         <div class="space-y-1">
           <button
             v-for="item in sectionItems"
             :key="item.key"
             type="button"
-            class="w-full text-left px-3 py-2 text-sm rounded transition-colors"
-            :class="activeSection === item.key ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'"
+            class="app-form-side-nav-item"
+            :class="activeSection === item.key ? 'app-form-side-nav-item-active' : 'app-form-side-nav-item-idle'"
             @click="scrollToSection(item.key)"
           >
             {{ item.label }}
@@ -574,56 +558,60 @@ const handleSubmit = async () => {
         </div>
       </aside>
 
-      <div class="overflow-y-auto p-4 md:p-5 space-y-6">
-        <section v-show="activeSection === 'basic'" id="sub-section-basic" class="space-y-4">
-          <h4 class="text-sm font-semibold text-muted-foreground">基本信息</h4>
+      <div class="subscription-form-scroll space-y-4">
+        <el-select v-model="activeSection" class="subscription-form-section-select w-full" aria-label="选择配置区域">
+          <el-option v-for="item in sectionItems" :key="item.key" :label="item.label" :value="item.key" />
+        </el-select>
+        <el-alert
+          v-if="isRunningEdit"
+          title="订阅运行中，仅允许调整规则和模板配置；如需修改数据源、Topic、Tag 或消费者组，请先停止订阅。"
+          type="warning"
+          show-icon
+          :closable="false"
+        />
+        <section v-show="activeSection === 'basic'" id="sub-section-basic" class="app-form-section space-y-4 subscription-section">
+          <header class="subscription-section-head"><div><span>01</span><h4>基本信息</h4><el-tag v-if="isRunningEdit" size="small" type="success">运行中</el-tag></div><p>确定消息来源、消费主题和消费者组</p></header>
           <div class="space-y-4">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="space-y-2">
-        <Label for="source_id">数据源 <span class="text-destructive">*</span></Label>
-        <Select v-model="formData.source_id">
-          <SelectTrigger>
-            <SelectValue placeholder="选择数据源" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem v-for="opt in sourceOptions" :key="opt.id" :value="opt.id">
-                {{ opt.name }}
-              </SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
+        <label for="source_id" class="text-sm font-medium">数据源 <span class="text-destructive">*</span></label>
+        <el-select id="source_id" v-model="formData.source_id" class="w-full" filterable placeholder="选择数据源" :disabled="isRunningEdit">
+          <el-option v-for="opt in sourceOptions" :key="opt.id" :label="opt.name" :value="opt.id" />
+        </el-select>
       </div>
 
       <div class="space-y-2">
-        <Label for="name">订阅名称 <span class="text-destructive">*</span></Label>
-        <Input
+        <label for="name" class="text-sm font-medium">订阅名称 <span class="text-destructive">*</span></label>
+        <el-input
           id="name"
           v-model="formData.name"
           placeholder="例如：订单异常告警订阅"
           maxlength="200"
+          :disabled="isRunningEdit"
         />
       </div>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="space-y-2">
-              <Label for="topic">Topic <span class="text-destructive">*</span></Label>
-              <Input
+              <label for="topic" class="text-sm font-medium">Topic <span class="text-destructive">*</span></label>
+              <el-input
                 id="topic"
                 v-model="formData.topic"
                 placeholder="例如：ORDER_EXCEPTION"
                 maxlength="200"
+                :disabled="isRunningEdit"
               />
             </div>
 
             <div class="space-y-2">
-              <Label for="tag">Tag</Label>
-              <Input
+              <label for="tag" class="text-sm font-medium">Tag</label>
+              <el-input
                 id="tag"
                 v-model="formData.tag"
                 placeholder="可选，例如：prod 或 tag1||tag2"
                 maxlength="200"
+                :disabled="isRunningEdit"
               />
               <p class="text-xs text-muted-foreground">
                 多个 Tag 用 || 分隔，留空表示订阅全部
@@ -632,12 +620,13 @@ const handleSubmit = async () => {
             </div>
 
             <div class="space-y-2">
-            <Label for="group_name">Consumer Group <span class="text-destructive">*</span></Label>
-            <Input
+            <label for="group_name" class="text-sm font-medium">Consumer Group <span class="text-destructive">*</span></label>
+            <el-input
               id="group_name"
               v-model="formData.group_name"
               placeholder="例如：mq_consumer_group"
               maxlength="200"
+              :disabled="isRunningEdit"
             />
             <p class="text-xs text-muted-foreground">
               消费者组名称，同一组内负载均衡消费
@@ -646,23 +635,24 @@ const handleSubmit = async () => {
           </div>
         </section>
 
-        <section v-show="activeSection === 'regex'" id="sub-section-regex" class="space-y-4">
-          <h4 class="text-sm font-semibold text-muted-foreground">正则配置</h4>
+        <section v-show="activeSection === 'regex'" id="sub-section-regex" class="app-form-section space-y-4 subscription-section">
+          <header class="subscription-section-head"><div><span>02</span><h4>正则配置</h4></div><p>验证消息并提取模板渲染所需字段</p></header>
           <div class="space-y-4">
             <div class="space-y-2">
-      <Label for="validate_regex">验证正则</Label>
+      <label for="validate_regex" class="text-sm font-medium">验证正则</label>
       <div class="relative">
-        <Textarea
+        <el-input
           id="validate_regex"
           v-model="formData.validate_regex"
+          type="textarea"
           placeholder='可选。DSL 示例：dsl:contains($.department, "研发部") && exists($.name)'
-          rows="2"
+          :rows="2"
           @focus="activeRuleField = 'validate'"
           @blur="handleRuleBlur"
         />
         <div
           v-if="validateSuggestions.length > 0"
-          class="absolute z-20 mt-1 w-full rounded-md border bg-background p-2 shadow-sm space-y-1 h-[158px] overflow-y-auto overscroll-contain"
+          class="glass-suggestion-panel absolute z-20 mt-1 w-full p-2 space-y-1 h-[158px] overflow-y-auto overscroll-contain"
           @mouseenter="handleSuggestionMouseEnter"
           @mouseleave="handleSuggestionMouseLeave"
           @wheel.stop
@@ -671,7 +661,7 @@ const handleSubmit = async () => {
             v-for="item in validateSuggestions"
             :key="`v-${item.name}`"
             type="button"
-            class="w-full text-left rounded px-2 py-1.5 hover:bg-muted transition-colors"
+            class="glass-suggestion-item w-full text-left px-2 py-1.5 transition-all"
             @mousedown.prevent="applySuggestion('validate', item.snippet)"
           >
             <div class="text-xs font-medium">{{ item.name }}</div>
@@ -685,73 +675,69 @@ const handleSubmit = async () => {
       <p v-if="validateSyntaxError" class="text-xs text-destructive">{{ validateSyntaxError }}</p>
             </div>
 
-            <div class="space-y-3 rounded-xl border bg-card/40 p-3 md:p-4">
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <div class="flex items-center gap-2">
-          <Label class="text-sm font-semibold">提取字段组</Label>
-          <Badge variant="secondary">共 {{ formData.extract_rules.length }} 组</Badge>
+            <div class="extract-rule-builder">
+      <div class="extract-rule-toolbar">
+        <div class="extract-rule-toolbar-copy">
+          <div><strong>提取字段</strong><span>{{ formData.extract_rules.length }} 组</span></div>
+          <p>将消息内容转换为模板变量</p>
         </div>
-        <Button type="button" size="sm" variant="outline" class="h-8 px-3" @click="addExtractRule">新增字段组</Button>
+        <el-button type="primary" plain size="small" @click="addExtractRule">新增字段</el-button>
       </div>
-      <div class="flex flex-wrap items-center gap-2 rounded-lg border border-dashed weak-divider bg-muted/40 p-2">
-        <span class="text-xs text-muted-foreground">快速模板:</span>
-        <Button type="button" size="sm" variant="ghost" class="h-7 px-2 text-xs" @click="addExtractRuleTemplate('to_user', 'dsl:pick($.to_user)')">
-          to_user
-        </Button>
-        <Button type="button" size="sm" variant="ghost" class="h-7 px-2 text-xs" @click="addExtractRuleTemplate('name', 'dsl:pick($.name)')">
-          name
-        </Button>
-        <Button type="button" size="sm" variant="ghost" class="h-7 px-2 text-xs" @click="addExtractRuleTemplate('text', 'dsl:pick($.text)')">
-          text
-        </Button>
+      <div class="extract-rule-presets" aria-label="常用字段模板">
+        <span>常用字段</span>
+        <button type="button" @click="addExtractRuleTemplate('to_user', 'dsl:pick($.to_user)')">to_user</button>
+        <button type="button" @click="addExtractRuleTemplate('name', 'dsl:pick($.name)')">name</button>
+        <button type="button" @click="addExtractRuleTemplate('text', 'dsl:pick($.text)')">text</button>
+        <small>点击后新增对应字段</small>
       </div>
-      <div
+      <div class="extract-rule-list">
+      <article
         v-for="(rule, idx) in formData.extract_rules"
         :key="`extract-rule-${idx}`"
-        class="rounded-lg border weak-divider bg-background p-3 space-y-3 shadow-sm transition-all hover:shadow-md"
+        class="extract-rule-card"
       >
-        <div class="flex items-center justify-between">
-          <Badge variant="outline" class="font-normal bg-muted/40">字段组 {{ idx + 1 }}</Badge>
-          <div class="flex items-center gap-1 rounded-md border bg-muted/30 p-1">
-            <Button type="button" size="sm" variant="ghost" class="h-6 px-2 text-xs" :disabled="idx === 0" @click="moveExtractRule(idx, -1)">上移</Button>
-            <Button type="button" size="sm" variant="ghost" class="h-6 px-2 text-xs" :disabled="idx === formData.extract_rules.length - 1" @click="moveExtractRule(idx, 1)">下移</Button>
-            <Button type="button" size="sm" variant="ghost" class="h-6 px-2 text-xs" @click="copyExtractRule(idx)">复制</Button>
-            <Button type="button" size="sm" variant="ghost" class="h-6 px-2 text-xs text-destructive hover:text-destructive" @click="requestRemoveExtractRule(idx)">删除</Button>
+        <header class="extract-rule-card-head">
+          <div class="extract-rule-order"><span>{{ String(idx + 1).padStart(2, '0') }}</span><strong>{{ rule.field || '未命名字段' }}</strong></div>
+          <div class="extract-rule-actions" aria-label="字段组操作">
+            <button type="button" :disabled="idx === 0" title="上移" @click="moveExtractRule(idx, -1)">↑</button>
+            <button type="button" :disabled="idx === formData.extract_rules.length - 1" title="下移" @click="moveExtractRule(idx, 1)">↓</button>
+            <button type="button" @click="copyExtractRule(idx)">复制</button>
+            <button type="button" class="is-danger" @click="requestRemoveExtractRule(idx)">删除</button>
           </div>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
-          <div class="space-y-1 md:col-span-4">
-            <Label :for="`extract_field_${idx}`">提取字段名</Label>
-            <Input
+        </header>
+        <div class="extract-rule-fields">
+          <div class="extract-rule-field-name">
+            <label :for="`extract_field_${idx}`">字段名称</label>
+            <el-input
               :id="`extract_field_${idx}`"
               v-model="rule.field"
               placeholder="例如：to_user"
             />
+            <span>模板中通过 ${字段名} 引用</span>
           </div>
-          <div class="space-y-1 md:col-span-8 relative">
-            <Label :for="`extract_regex_${idx}`">提取规则（DSL）</Label>
-            <div class="mb-1 flex flex-wrap gap-1">
-              <Button type="button" size="sm" variant="ghost" class="h-6 px-2 text-[11px]" @mousedown.prevent='insertJsonTemplate("findIdsByValue($, \"target\", \"id\", \"|\")")'>
-                JSON: findIdsByValue
-              </Button>
-              <Button type="button" size="sm" variant="ghost" class="h-6 px-2 text-[11px]" @mousedown.prevent='insertJsonTemplate("findByField($, \"value\", \"target\", \"id\", \"|\")")'>
-                JSON: findByField
-              </Button>
-              <Button type="button" size="sm" variant="ghost" class="h-6 px-2 text-[11px]" @mousedown.prevent='insertJsonTemplate("findByFieldRaw($, \"value\", \"target\", \"|\")")'>
-                JSON: findByFieldRaw
-              </Button>
+          <div class="extract-rule-expression">
+            <div class="extract-rule-expression-head">
+              <label :for="`extract_regex_${idx}`">提取表达式</label>
+              <div class="extract-rule-json-presets">
+                <span>JSON 模板</span>
+                <button type="button" @mousedown.prevent='insertJsonTemplate("findIdsByValue($, \"target\", \"id\", \"|\")")'>按值查 ID</button>
+                <button type="button" @mousedown.prevent='insertJsonTemplate("findByField($, \"value\", \"target\", \"id\", \"|\")")'>按字段取值</button>
+                <button type="button" @mousedown.prevent='insertJsonTemplate("findByFieldRaw($, \"value\", \"target\", \"|\")")'>返回原始对象</button>
+              </div>
             </div>
-            <Textarea
+            <div class="relative">
+            <el-input
               :id="`extract_regex_${idx}`"
               v-model="rule.regex"
+              type="textarea"
               placeholder='例如：dsl:pick($.name)'
-              rows="2"
+              :rows="3"
               @focus="activeRuleField = 'extract'; activeExtractRuleIndex = idx"
               @blur="handleRuleBlur"
             />
             <div
               v-if="activeRuleField === 'extract' && activeExtractRuleIndex === idx && extractSuggestions.length > 0"
-              class="absolute z-20 mt-1 w-full rounded-md border bg-background p-2 shadow-sm space-y-1 h-[158px] overflow-y-auto overscroll-contain"
+              class="glass-suggestion-panel absolute z-20 mt-1 w-full p-2 space-y-1 h-[158px] overflow-y-auto overscroll-contain"
               @mouseenter="handleSuggestionMouseEnter"
               @mouseleave="handleSuggestionMouseLeave"
               @wheel.stop
@@ -760,7 +746,7 @@ const handleSubmit = async () => {
                 v-for="item in extractSuggestions"
                 :key="`e-${idx}-${item.name}`"
                 type="button"
-                class="w-full text-left rounded px-2 py-1.5 hover:bg-muted transition-colors"
+                class="glass-suggestion-item w-full text-left px-2 py-1.5 transition-all"
                 @mousedown.prevent="applySuggestion('extract', item.snippet)"
               >
                 <div class="text-xs font-medium">{{ item.name }}</div>
@@ -769,9 +755,11 @@ const handleSubmit = async () => {
             </div>
           </div>
         </div>
+        </div>
+      </article>
       </div>
-      <p class="text-xs text-muted-foreground leading-5">
-        每个字段组定义一个变量（字段名 + 提取规则）。建议将接收者字段命名为 to_user（企业微信应用定向发送）
+      <p class="extract-rule-help">
+        每个字段对应一个模板变量；企业微信应用的动态接收者字段请使用 <code>to_user</code>
       </p>
       <p v-if="extractSyntaxError" class="text-xs text-destructive">{{ extractSyntaxError }}</p>
             </div>
@@ -781,23 +769,24 @@ const handleSubmit = async () => {
         </section>
 
         <!-- 正则测试区域 -->
-        <section v-show="activeSection === 'test'" id="sub-section-test" class="border weak-divider rounded-lg p-4 bg-muted/30">
-      <h4 class="text-sm font-medium mb-3">正则测试</h4>
-      <div class="space-y-3">
+        <section v-show="activeSection === 'test'" id="sub-section-test" class="app-form-section subscription-section">
+      <header class="subscription-section-head"><div><span>03</span><h4>正则测试</h4></div><p>使用样例消息验证匹配与字段提取结果</p></header>
+      <div class="subscription-test-body space-y-3">
       <div class="flex items-center justify-between mb-3">
         <span class="text-xs text-muted-foreground">输入样例并用后端规则测试</span>
-        <Button type="button" variant="outline" size="sm" :disabled="isTestingRegex" @click="runRegexTest">
+        <el-button plain size="small" :loading="isTestingRegex" @click="runRegexTest">
           {{ isTestingRegex ? '测试中...' : '测试' }}
-        </Button>
+        </el-button>
       </div>
       <div class="space-y-3">
         <div class="space-y-2">
-          <Label for="test_message" class="text-xs">测试消息内容</Label>
-          <Textarea
+          <label for="test_message" class="text-xs font-medium">测试消息内容</label>
+          <el-input
             id="test_message"
             v-model="testMessage"
+            type="textarea"
             placeholder='粘贴示例消息内容进行测试，例如：{"order_id":"12345","status":"created"}'
-            rows="3"
+            :rows="3"
           />
         </div>
 
@@ -809,8 +798,8 @@ const handleSubmit = async () => {
           <template v-else>
             <div class="flex items-center gap-2 text-sm">
               <span>验证结果:</span>
-              <Badge v-if="testResult.validateMatched === true" variant="default" class="bg-green-500">匹配</Badge>
-              <Badge v-else-if="testResult.validateMatched === false" variant="destructive">不匹配</Badge>
+              <el-tag v-if="testResult.validateMatched === true" type="success">匹配</el-tag>
+              <el-tag v-else-if="testResult.validateMatched === false" type="danger">不匹配</el-tag>
               <span v-else class="text-muted-foreground">未设置验证正则</span>
             </div>
             <div v-if="extractedEntries.length > 0" class="text-sm">
@@ -821,7 +810,7 @@ const handleSubmit = async () => {
                   :key="`${key}-${idx}`"
                   class="flex items-center gap-2 p-2 bg-background rounded border"
                 >
-                  <Badge variant="outline">{{ key }}</Badge>
+                  <el-tag effect="plain">{{ key }}</el-tag>
                   <span class="text-xs text-muted-foreground">=</span>
                   <span class="text-xs font-mono break-all">{{ value }}</span>
                 </div>
@@ -830,9 +819,9 @@ const handleSubmit = async () => {
             <div v-if="dynamicRecipientPreview.length > 0" class="text-sm">
               <span class="text-muted-foreground">动态接收者预览:</span>
               <div class="mt-2 flex flex-wrap gap-2">
-                <Badge v-for="(recipient, idx) in dynamicRecipientPreview" :key="`recipient-${idx}`" variant="secondary">
+                <el-tag v-for="(recipient, idx) in dynamicRecipientPreview" :key="`recipient-${idx}`" type="info" effect="light">
                   {{ recipient }}
-                </Badge>
+                </el-tag>
               </div>
               <p class="mt-1 text-xs text-muted-foreground">
                 仅当提取字段名为 to_user 且企业微信应用开启动态接收模式时，按以上接收者定向推送
@@ -847,59 +836,19 @@ const handleSubmit = async () => {
       </div>
         </section>
 
-        <section v-show="activeSection === 'template'" id="sub-section-template" class="space-y-2">
-      <h4 class="text-sm font-semibold text-muted-foreground">模板配置</h4>
+        <section v-show="activeSection === 'template'" id="sub-section-template" class="app-form-section space-y-2 subscription-section">
+      <header class="subscription-section-head"><div><span>04</span><h4>模板配置</h4></div><p>选择渲染格式和最终发送模板</p></header>
       <div class="space-y-2">
-      <Label>模板内容格式 <span class="text-destructive">*</span></Label>
-      <div class="inline-flex rounded-lg border bg-muted/30 p-1 gap-1">
-        <button
-          type="button"
-          class="px-4 py-1.5 text-sm rounded-md transition-colors border"
-          :class="formData.template_content_type === 'text'
-            ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-            : 'bg-background text-muted-foreground border-transparent hover:text-foreground'"
-          @click="formData.template_content_type = 'text'"
-        >
-          Text
-        </button>
-        <button
-          type="button"
-          class="px-4 py-1.5 text-sm rounded-md transition-colors border"
-          :class="formData.template_content_type === 'html'
-            ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-            : 'bg-background text-muted-foreground border-transparent hover:text-foreground'"
-          @click="formData.template_content_type = 'html'"
-        >
-          HTML
-        </button>
-        <button
-          type="button"
-          class="px-4 py-1.5 text-sm rounded-md transition-colors border"
-          :class="formData.template_content_type === 'markdown'
-            ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-            : 'bg-background text-muted-foreground border-transparent hover:text-foreground'"
-          @click="formData.template_content_type = 'markdown'"
-        >
-          Markdown
-        </button>
-      </div>
+      <label class="text-sm font-medium">模板内容格式 <span class="text-destructive">*</span></label>
+      <el-segmented v-model="formData.template_content_type" :options="['text', 'html', 'markdown']" />
       <p class="text-xs text-muted-foreground">
         订阅发送时按所选格式渲染模板内容
       </p>
 
-      <Label for="template_id">消息模板 <span class="text-destructive">*</span></Label>
-      <Select v-model="formData.template_id">
-        <SelectTrigger>
-          <SelectValue placeholder="选择消息模板" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectGroup>
-            <SelectItem v-for="opt in templateOptions" :key="opt.id" :value="opt.id">
-              {{ opt.name }}
-            </SelectItem>
-          </SelectGroup>
-        </SelectContent>
-      </Select>
+      <label for="template_id" class="text-sm font-medium">消息模板 <span class="text-destructive">*</span></label>
+      <el-select id="template_id" v-model="formData.template_id" class="w-full" filterable placeholder="选择消息模板">
+        <el-option v-for="opt in templateOptions" :key="opt.id" :label="opt.name" :value="opt.id" />
+      </el-select>
       <p class="text-xs text-muted-foreground">
         选择用于发送消息的模板，支持 ${variable} 变量替换
       </p>
@@ -908,11 +857,7 @@ const handleSubmit = async () => {
       </div>
     </div>
 
-    <Dialog v-model:open="isDeleteRuleDialogOpen">
-      <DialogContent class="sm:max-w-[480px]">
-        <DialogHeader>
-          <DialogTitle>确认删除字段组</DialogTitle>
-        </DialogHeader>
+    <el-dialog v-model="isDeleteRuleDialogOpen" title="确认删除字段组" width="min(480px, calc(100vw - 24px))" class="app-nested-dialog" append-to-body>
         <div class="space-y-3">
           <p class="text-sm text-muted-foreground">
             请输入字段名
@@ -921,7 +866,7 @@ const handleSubmit = async () => {
             </span>
             以确认删除。
           </p>
-          <Input
+          <el-input
             v-model="deleteRuleConfirmInput"
             placeholder="请输入字段名确认删除"
             :disabled="pendingDeleteRuleIndex === null || !(formData.extract_rules[pendingDeleteRuleIndex]?.field || '').trim()"
@@ -934,19 +879,89 @@ const handleSubmit = async () => {
             {{ deleteRuleMatchStatusText }}
           </p>
         </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" @click="resetDeleteRuleDialog">取消</Button>
-          <Button type="button" variant="destructive" :disabled="!canConfirmDeleteRule" @click="confirmRemoveExtractRule">
+        <template #footer>
+          <el-button @click="resetDeleteRuleDialog">取消</el-button>
+          <el-button type="danger" :disabled="!canConfirmDeleteRule" @click="confirmRemoveExtractRule">
             确认删除
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </el-button>
+        </template>
+    </el-dialog>
 
-    <div class="shrink-0 border-t weak-divider px-4 py-3 bg-background flex justify-end gap-2">
-      <Button type="submit" :disabled="isSubmitting">
+    <div class="app-form-actions shrink-0 py-2.5">
+      <el-button type="primary" native-type="submit" :loading="isSubmitting">
         {{ isSubmitting ? '提交中...' : (isEdit ? '保存' : '创建') }}
-      </Button>
+      </el-button>
     </div>
   </form>
 </template>
+
+<style scoped>
+.subscription-section { border: 1px solid var(--app-overlay-border); border-radius: 9px; background: var(--app-overlay-surface); }
+.subscription-form-shell { display: flex; width: 100%; height: 100%; min-height: 0; flex-direction: column; }
+.subscription-form-layout { display: grid; grid-template-columns: 190px minmax(0, 1fr); min-height: 0; flex: 1; }
+.subscription-form-nav { display: block; overflow: hidden; }
+.subscription-form-scroll { min-height: 0; padding: 10px 12px; overflow-y: auto; overscroll-behavior: contain; }
+.subscription-form-section-select { display: none; }
+.subscription-section-head p { margin: 4px 0 0; color: var(--admin-text-muted); font-size: 11px; line-height: 1.55; }
+.subscription-section { padding: 0 !important; }
+.subscription-section > :not(.subscription-section-head) { margin-inline: 14px; }
+.subscription-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 38px; padding: 0 12px; border-bottom: 1px solid var(--app-overlay-border); }
+.subscription-section-head > div { display: flex; align-items: center; gap: 8px; }
+.subscription-section-head span { color: var(--brand-600); font: 800 10px monospace; }
+.subscription-section-head h4 { margin: 0; font-size: 13px; }
+.subscription-section-head p { margin: 0; }
+.subscription-test-body { padding-block: 14px; }
+.extract-rule-builder { overflow: hidden; border: 1px solid var(--app-overlay-border); border-radius: 10px; background: var(--app-overlay-surface); }
+.extract-rule-toolbar { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 14px; border-bottom: 1px solid var(--app-overlay-border); }
+.extract-rule-toolbar-copy > div { display: flex; align-items: center; gap: 8px; }
+.extract-rule-toolbar-copy strong { font-size: 13px; }
+.extract-rule-toolbar-copy span { border-radius: 999px; padding: 2px 7px; background: color-mix(in srgb, var(--brand-500) 10%, transparent); color: var(--brand-700); font-size: 10px; font-weight: 700; }
+.extract-rule-toolbar-copy p { margin: 3px 0 0; color: var(--admin-text-muted); font-size: 11px; }
+.extract-rule-presets { display: flex; min-height: 42px; align-items: center; gap: 6px; padding: 6px 14px; border-bottom: 1px solid var(--app-overlay-border); background: color-mix(in srgb, var(--app-overlay-surface) 92%, var(--brand-50)); }
+.extract-rule-presets > span, .extract-rule-json-presets > span { margin-right: 2px; color: var(--admin-text-muted); font-size: 11px; }
+.extract-rule-presets button, .extract-rule-json-presets button { border: 1px solid color-mix(in srgb, var(--brand-500) 18%, var(--app-overlay-border)); border-radius: 6px; padding: 4px 8px; background: var(--app-overlay-surface); color: var(--admin-text-primary); cursor: pointer; font-size: 11px; line-height: 1.35; }
+.extract-rule-presets button:hover, .extract-rule-json-presets button:hover { border-color: color-mix(in srgb, var(--brand-500) 52%, var(--app-overlay-border)); color: var(--brand-700); }
+.extract-rule-presets small { margin-left: auto; color: var(--admin-text-muted); font-size: 10px; }
+.extract-rule-list { display: grid; gap: 10px; padding: 12px; }
+.extract-rule-card { overflow: hidden; border: 1px solid var(--app-overlay-border); border-radius: 9px; background: var(--app-overlay-surface); }
+.extract-rule-card-head { display: flex; min-height: 42px; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px 6px 12px; border-bottom: 1px solid var(--app-overlay-border); background: var(--admin-surface-muted); }
+.extract-rule-order { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.extract-rule-order span { color: var(--brand-600); font: 800 10px monospace; }
+.extract-rule-order strong { min-width: 0; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.extract-rule-actions { display: flex; align-items: center; gap: 2px; }
+.extract-rule-actions button { min-width: 30px; height: 28px; border: 0; border-radius: 6px; padding: 0 7px; background: transparent; color: var(--admin-text-muted); cursor: pointer; font-size: 11px; }
+.extract-rule-actions button:hover:not(:disabled) { background: var(--app-overlay-surface); color: var(--brand-700); }
+.extract-rule-actions button.is-danger:hover { background: color-mix(in srgb, var(--el-color-danger) 10%, transparent); color: var(--el-color-danger); }
+.extract-rule-actions button:disabled { cursor: not-allowed; opacity: .35; }
+.extract-rule-fields { display: grid; grid-template-columns: minmax(180px, .7fr) minmax(0, 1.7fr); gap: 14px; padding: 12px; }
+.extract-rule-field-name, .extract-rule-expression { min-width: 0; }
+.extract-rule-field-name { display: grid; align-content: start; gap: 6px; }
+.extract-rule-fields label { color: var(--admin-text-primary); font-size: 12px; font-weight: 650; }
+.extract-rule-field-name > span { color: var(--admin-text-muted); font-size: 10px; }
+.extract-rule-expression-head { display: flex; min-height: 24px; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.extract-rule-json-presets { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.extract-rule-json-presets button { padding: 3px 6px; }
+.extract-rule-help { margin: 0; padding: 0 14px 12px; color: var(--admin-text-muted); font-size: 11px; line-height: 1.55; }
+.extract-rule-help code { color: var(--brand-700); font-size: 10px; }
+.subscription-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 58px; padding: 10px 16px; border-top: 1px solid var(--app-overlay-border); background: var(--app-overlay-surface); }
+.subscription-actions > span { color: var(--admin-text-muted); font-size: 11px; }
+.subscription-actions > div { display: flex; gap: 8px; }
+@container app-managed-drawer (max-width: 760px) {
+  .subscription-form-layout { grid-template-columns: 1fr; }
+  .subscription-form-nav { display: none; }
+  .subscription-form-section-select { display: flex; }
+  .subscription-form-scroll { padding: 10px 12px; }
+  .subscription-section-head { align-items: center; flex-direction: row; }
+  .subscription-actions, .extract-rule-toolbar { align-items: flex-start; flex-direction: column; }
+  .subscription-section-head p, .subscription-actions > span, .extract-rule-presets small { display: none; }
+  .subscription-actions > div { width: 100%; }
+  .subscription-actions :deep(.el-button) { flex: 1; }
+  .extract-rule-presets { align-items: flex-start; flex-wrap: wrap; }
+  .extract-rule-presets > span { width: 100%; }
+  .extract-rule-card-head { align-items: flex-start; flex-direction: column; }
+  .extract-rule-actions { width: 100%; justify-content: flex-end; }
+  .extract-rule-fields { grid-template-columns: 1fr; }
+  .extract-rule-expression-head { align-items: flex-start; flex-direction: column; }
+  .extract-rule-json-presets { justify-content: flex-start; }
+}
+</style>

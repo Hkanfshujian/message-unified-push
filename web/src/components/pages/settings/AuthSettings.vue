@@ -1,11 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { request } from '@/api/api'
-import { toast } from 'vue-sonner'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Switch } from '@/components/ui/switch'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { authApi } from '@/api/auth'
+import { notifyError, notifySuccess } from '@/util/uiFeedback'
 import { QuestionCircleOutlined } from '@ant-design/icons-vue'
 
 const loading = ref(false)
@@ -49,7 +45,7 @@ const userGroups = ref<Array<{ id: number, code: string, name: string }>>([])
 
 const loadUserGroups = async () => {
   try {
-    const rsp = await request.get('/rbac/groups')
+    const rsp = await authApi.groups()
     const list = rsp?.data?.data?.lists || []
     userGroups.value = list.map((item: any) => ({
       id: item.id,
@@ -64,7 +60,7 @@ const loadUserGroups = async () => {
 const loadConfig = async () => {
   loading.value = true
   try {
-    const rsp = await request.get('/system/auth-config')
+    const rsp = await authApi.getConfig()
     const data = rsp?.data?.data || {}
     state.register_enabled = data.register_enabled || 'false'
     // Casdoor 配置
@@ -91,7 +87,7 @@ const loadConfig = async () => {
 const saveConfig = async () => {
   saving.value = true
   try {
-    const rsp = await request.post('/system/auth-config', {
+    const rsp = await authApi.saveConfig({
       data: {
         register_enabled: state.register_enabled,
         // Casdoor 配置
@@ -113,10 +109,10 @@ const saveConfig = async () => {
       }
     })
     if (rsp?.data?.code === 200) {
-      toast.success('认证配置保存成功')
+      notifySuccess('认证配置保存成功')
       return
     }
-    toast.error(rsp?.data?.msg || '认证配置保存失败')
+    notifyError(rsp?.data?.msg || '认证配置保存失败')
   } finally {
     saving.value = false
   }
@@ -129,14 +125,13 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="space-y-5">
-    <!-- 基础开关 -->
-    <div class="rounded-lg border weak-divider p-4 space-y-3 bg-background/70 dark:bg-muted/30">
+  <el-form v-loading="loading" label-position="top" class="space-y-5">
+    <el-card shadow="never" class="settings-section-card">
       <div class="text-sm font-semibold">基础开关</div>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
-            <Switch v-model="registerEnabledBool" />
+            <el-switch v-model="registerEnabledBool" />
             <span class="text-sm font-medium" :class="registerEnabledBool ? 'text-foreground' : 'text-muted-foreground'">
               允许新用户注册
             </span>
@@ -144,81 +139,59 @@ onMounted(async () => {
         </div>
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
-            <Switch v-model="casdoorEnabledBool" />
+            <el-switch v-model="casdoorEnabledBool" />
             <span class="text-sm font-medium" :class="casdoorEnabledBool ? 'text-foreground' : 'text-muted-foreground'">
               启用 Casdoor 登录
             </span>
           </div>
         </div>
       </div>
-    </div>
+    </el-card>
 
-    <!-- Casdoor 配置 -->
-    <div v-if="casdoorEnabledBool" class="rounded-lg border weak-divider p-4 space-y-3 bg-background/70 dark:bg-muted/30">
+    <el-card v-if="casdoorEnabledBool" shadow="never" class="settings-section-card">
       <div class="text-sm font-semibold">Casdoor 配置</div>
-      <TooltipProvider>
+      <div class="space-y-4 mt-3">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="space-y-2">
             <div class="flex items-center gap-1.5">
               <span class="text-sm text-foreground">服务地址</span>
-              <Tooltip>
-                <TooltipTrigger>
-                  <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Casdoor 服务地址，如：https://sso.example.com</p>
-                </TooltipContent>
-              </Tooltip>
+              <el-tooltip content="Casdoor 服务地址，如：https://sso.example.com" placement="top">
+                <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
+              </el-tooltip>
             </div>
-            <Input v-model="state.casdoor_endpoint" maxlength="255" autocomplete="off" />
+            <el-input v-model="state.casdoor_endpoint" maxlength="255" autocomplete="off" />
           </div>
           <div class="space-y-2">
             <div class="flex items-center gap-1.5">
               <span class="text-sm text-foreground">回调地址</span>
-              <Tooltip>
-                <TooltipTrigger>
-                  <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>登录成功后的回调地址，如：https://your-domain.com/auth/casdoor/callback</p>
-                </TooltipContent>
-              </Tooltip>
+              <el-tooltip content="登录成功后的回调地址，如：https://your-domain.com/auth/casdoor/callback" placement="top">
+                <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
+              </el-tooltip>
             </div>
-            <Input v-model="state.casdoor_redirect_uri" maxlength="255" autocomplete="off" />
+            <el-input v-model="state.casdoor_redirect_uri" maxlength="255" autocomplete="off" />
           </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="space-y-2">
             <div class="flex items-center gap-1.5">
               <span class="text-sm text-foreground">客户端ID</span>
-              <Tooltip>
-                <TooltipTrigger>
-                  <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>在 Casdoor 注册的应用客户端 ID</p>
-                </TooltipContent>
-              </Tooltip>
+              <el-tooltip content="在 Casdoor 注册的应用客户端 ID" placement="top">
+                <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
+              </el-tooltip>
             </div>
-            <Input v-model="state.casdoor_client_id" maxlength="255" autocomplete="off" />
+            <el-input v-model="state.casdoor_client_id" maxlength="255" autocomplete="off" />
           </div>
           <div class="space-y-2">
             <div class="flex items-center gap-1.5">
               <span class="text-sm text-foreground">客户端密钥</span>
-              <Tooltip>
-                <TooltipTrigger>
-                  <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>在 Casdoor 注册的应用客户端密钥</p>
-                </TooltipContent>
-              </Tooltip>
+              <el-tooltip content="在 Casdoor 注册的应用客户端密钥" placement="top">
+                <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
+              </el-tooltip>
             </div>
-            <Input v-model="state.casdoor_client_secret" type="password" maxlength="255" autocomplete="off" />
+            <el-input v-model="state.casdoor_client_secret" type="password" show-password maxlength="255" autocomplete="off" />
           </div>
         </div>
 
-        <!-- OAuth2 端点配置 -->
         <div class="pt-4 mt-2 border-t weak-divider">
           <div class="text-sm font-medium text-foreground mb-2">OAuth2 端点配置</div>
           <div class="text-xs text-muted-foreground mb-3">Casdoor 默认端点已预设，一般无需修改</div>
@@ -226,131 +199,115 @@ onMounted(async () => {
             <div class="space-y-2">
               <div class="flex items-center gap-1.5">
                 <span class="text-sm text-foreground">授权路径</span>
-                <Tooltip>
-                  <TooltipTrigger>
-                    <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>OAuth2 授权端点路径，默认：/login/oauth/authorize</p>
-                  </TooltipContent>
-                </Tooltip>
+                <el-tooltip content="OAuth2 授权端点路径，默认：/login/oauth/authorize" placement="top">
+                  <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
+                </el-tooltip>
               </div>
-              <Input v-model="state.casdoor_auth_path" maxlength="255" autocomplete="off" />
+              <el-input v-model="state.casdoor_auth_path" maxlength="255" autocomplete="off" />
             </div>
             <div class="space-y-2">
               <div class="flex items-center gap-1.5">
                 <span class="text-sm text-foreground">令牌路径</span>
-                <Tooltip>
-                  <TooltipTrigger>
-                    <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>OAuth2 令牌端点路径，默认：/api/login/oauth/access_token</p>
-                  </TooltipContent>
-                </Tooltip>
+                <el-tooltip content="OAuth2 令牌端点路径，默认：/api/login/oauth/access_token" placement="top">
+                  <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
+                </el-tooltip>
               </div>
-              <Input v-model="state.casdoor_token_path" maxlength="255" autocomplete="off" />
+              <el-input v-model="state.casdoor_token_path" maxlength="255" autocomplete="off" />
             </div>
             <div class="space-y-2">
               <div class="flex items-center gap-1.5">
                 <span class="text-sm text-foreground">用户信息路径</span>
-                <Tooltip>
-                  <TooltipTrigger>
-                    <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>用户信息端点路径，默认：/api/get-account</p>
-                  </TooltipContent>
-                </Tooltip>
+                <el-tooltip content="用户信息端点路径，默认：/api/get-account" placement="top">
+                  <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
+                </el-tooltip>
               </div>
-              <Input v-model="state.casdoor_userinfo_path" maxlength="255" autocomplete="off" />
+              <el-input v-model="state.casdoor_userinfo_path" maxlength="255" autocomplete="off" />
             </div>
             <div class="space-y-2">
               <div class="flex items-center gap-1.5">
                 <span class="text-sm text-foreground">登出路径</span>
-                <Tooltip>
-                  <TooltipTrigger>
-                    <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>统一登出端点路径，默认：/api/logout</p>
-                  </TooltipContent>
-                </Tooltip>
+                <el-tooltip content="统一登出端点路径，默认：/api/logout" placement="top">
+                  <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
+                </el-tooltip>
               </div>
-              <Input v-model="state.casdoor_logout_path" maxlength="255" autocomplete="off" />
+              <el-input v-model="state.casdoor_logout_path" maxlength="255" autocomplete="off" />
             </div>
           </div>
         </div>
-      </TooltipProvider>
-    </div>
+      </div>
+    </el-card>
 
-    <!-- 登录策略 -->
-    <div class="rounded-lg border weak-divider p-4 space-y-3 bg-background/70 dark:bg-muted/30">
+    <el-card shadow="never" class="settings-section-card">
       <div class="text-sm font-semibold">登录策略</div>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
         <div class="space-y-2">
           <div class="text-sm text-foreground">本地新用户默认组</div>
-          <select
+          <el-select
             v-model="state.local_default_group_code"
-            class="w-full h-9 px-3 rounded-md border border-input bg-background text-sm"
+            class="w-full"
+            placeholder="不自动绑定"
+            clearable
           >
-            <option value="">不自动绑定</option>
-            <option v-for="group in userGroups" :key="group.code" :value="group.code">
+            <el-option label="不自动绑定" value="" />
+            <el-option v-for="group in userGroups" :key="group.code" :label="group.name" :value="group.code">
               {{ group.name }}
-            </option>
-          </select>
+            </el-option>
+          </el-select>
         </div>
         <div v-if="casdoorEnabledBool" class="space-y-2">
           <div class="text-sm text-foreground">Casdoor 新用户默认组</div>
-          <select
+          <el-select
             v-model="state.casdoor_default_group_code"
-            class="w-full h-9 px-3 rounded-md border border-input bg-background text-sm"
+            class="w-full"
+            placeholder="不自动绑定"
+            clearable
           >
-            <option value="">不自动绑定</option>
-            <option v-for="group in userGroups" :key="group.code" :value="group.code">
+            <el-option label="不自动绑定" value="" />
+            <el-option v-for="group in userGroups" :key="group.code" :label="group.name" :value="group.code">
               {{ group.name }}
-            </option>
-          </select>
+            </el-option>
+          </el-select>
         </div>
       </div>
       <div v-if="casdoorEnabledBool" class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="flex items-center gap-3">
-          <Switch v-model="casdoorAutoCreateUserBool" />
+          <el-switch v-model="casdoorAutoCreateUserBool" />
           <span class="text-sm font-medium" :class="casdoorAutoCreateUserBool ? 'text-foreground' : 'text-muted-foreground'">
             Casdoor 自动创建本地用户
           </span>
         </div>
         <div class="space-y-2">
           <div class="text-sm text-foreground">登录按钮文案</div>
-          <Input v-model="state.casdoor_button_text" placeholder="企微登录" maxlength="50" />
+          <el-input v-model="state.casdoor_button_text" placeholder="企微登录" maxlength="50" />
         </div>
       </div>
       <div v-if="casdoorEnabledBool" class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="space-y-2">
           <div class="text-sm text-foreground flex items-center gap-1">
             登录按钮图标
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger as-child>
-                  <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>填写图标 URL，如企微、钉钉等 Logo 地址</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <el-tooltip content="填写图标 URL，如企微、钉钉等 Logo 地址" placement="top">
+              <QuestionCircleOutlined class="text-[14px] text-muted-foreground cursor-help" />
+            </el-tooltip>
           </div>
-          <Input v-model="state.casdoor_button_icon" placeholder="https://example.com/icon.png" />
+          <el-input v-model="state.casdoor_button_icon" placeholder="https://example.com/icon.png" />
         </div>
         <div v-if="state.casdoor_button_icon" class="flex items-center gap-2">
           <span class="text-sm text-muted-foreground">预览：</span>
           <img :src="state.casdoor_button_icon" alt="button-icon" class="w-6 h-6 object-contain" @error="(e: Event) => (e.target as HTMLImageElement).style.display = 'none'" />
         </div>
       </div>
-    </div>
+    </el-card>
 
     <div class="flex justify-end pt-2 border-t weak-divider">
-      <Button :disabled="loading || saving" @click="saveConfig">{{ saving ? '保存中...' : '保存设置' }}</Button>
+      <el-button type="primary" :disabled="loading || saving" :loading="saving" @click="saveConfig">
+        保存设置
+      </el-button>
     </div>
-  </div>
+  </el-form>
 </template>
+
+<style scoped>
+:deep(.settings-section-card > .el-card__body) {
+  padding: 16px;
+}
+</style>

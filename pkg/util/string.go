@@ -1,27 +1,37 @@
 package util
 
 import (
-	"math/rand"
-	"time"
+	"crypto/rand"
+	"fmt"
 )
 
-func GenerateRandomString(length int) string {
-	source := rand.NewSource(time.Now().UnixNano())
-	random := rand.New(source)
+const (
+	lowercaseLetters = "abcdefghijklmnopqrstuvwxyz"
+	uppercaseLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	digits           = "0123456789"
+)
 
-	charSet := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	var result string
-	var charSetLen = len(charSet)
-
-	for i := 0; i < length; i++ {
-		randomIndex := random.Intn(charSetLen)
-		result += string(charSet[randomIndex])
+func GenerateRandomString(length int) (string, error) {
+	if length < 0 {
+		return "", fmt.Errorf("random string length must not be negative")
 	}
-
-	return result
+	alphabet := lowercaseLetters + uppercaseLetters + digits
+	result := make([]byte, length)
+	limit := byte(256 - (256 % len(alphabet)))
+	for i := 0; i < length; {
+		var sample [1]byte
+		if _, err := rand.Read(sample[:]); err != nil {
+			return "", fmt.Errorf("generate secure random string: %w", err)
+		}
+		if sample[0] >= limit {
+			continue
+		}
+		result[i] = alphabet[int(sample[0])%len(alphabet)]
+		i++
+	}
+	return string(result), nil
 }
 
-func GenerateUniqueID() string {
-	randomString := GenerateRandomString(10)
-	return randomString
+func GenerateUniqueID() (string, error) {
+	return GenerateRandomString(10)
 }

@@ -19,6 +19,8 @@ func GetStatisticData(c *gin.Context) {
 	statisticType := c.Query("type")
 	
 	msgService := statistic_service.StatisticService{}
+	msgService.StartTime = c.Query("start_time")
+	msgService.EndTime = c.Query("end_time")
 	
 	switch statisticType {
 	case "basic":

@@ -6,31 +6,35 @@ import (
 )
 
 // GenerateTemplateUniqueID 生成模板唯一ID
-func GenerateTemplateUniqueID() string {
-	newUUID := util.GenerateUniqueID()
-	return fmt.Sprintf("TP%s", newUUID)
+func GenerateTemplateUniqueID() (string, error) {
+	newUUID, err := util.GenerateUniqueID()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("TP%s", newUUID), nil
 }
 
 // Template 消息模板
 type Template struct {
 	UUIDModel
-	
+	SoftDeleteModel
+
 	Name        string `json:"name" gorm:"type:varchar(200);not null;index" binding:"required"`
 	Description string `json:"description" gorm:"type:text"`
-	
+
 	// 模板内容（带占位符）
 	TextTemplate     string `json:"text_template" gorm:"type:text"`
 	HTMLTemplate     string `json:"html_template" gorm:"type:text"`
 	MarkdownTemplate string `json:"markdown_template" gorm:"type:text"`
-	
+
 	// 占位符定义（JSON格式）
 	Placeholders string `json:"placeholders" gorm:"type:text"`
-	
+
 	// @提醒配置
 	AtMobiles string `json:"at_mobiles" gorm:"type:text;comment:'@手机号列表，逗号分隔'"`
 	AtUserIds string `json:"at_user_ids" gorm:"type:text;comment:'@用户ID列表，逗号分隔'"`
 	IsAtAll   bool   `json:"is_at_all" gorm:"default:false;comment:'是否@所有人'"`
-	
+
 	// 状态：enabled/disabled
 	Status string `json:"status" gorm:"type:varchar(20);default:'enabled';index"`
 }
@@ -47,7 +51,7 @@ func (t *Template) Add() error {
 func (t *Template) Update() error {
 	// 使用 Select 明确指定要更新的字段，包括布尔值字段，排除不应更新的时间戳字段
 	if err := db.Model(&Template{}).Where("id = ?", t.ID).
-		Select("name", "description", "text_template", "html_template", "markdown_template", 
+		Select("name", "description", "text_template", "html_template", "markdown_template",
 			"placeholders", "at_mobiles", "at_user_ids", "is_at_all", "status", "modified_by").
 		Updates(t).Error; err != nil {
 		return err
@@ -56,8 +60,8 @@ func (t *Template) Update() error {
 }
 
 // Delete 删除消息模板
-func (t *Template) Delete() error {
-	if err := db.Where("id = ?", t.ID).Delete(&Template{}).Error; err != nil {
+func (t *Template) Archive() error {
+	if err := db.Unscoped().Where("id = ?", t.ID).Delete(&Template{}).Error; err != nil {
 		return err
 	}
 	return nil
@@ -87,8 +91,8 @@ type TemplateResult struct {
 func GetTemplates(pageNum int, pageSize int, text string, maps map[string]interface{}) ([]TemplateResult, error) {
 	var datas []TemplateResult
 	templateT := GetSchema(Template{})
-	
-	query := db.Table(templateT)
+
+	query := db.Table(templateT).Where(notDeleted(templateT))
 	if startTime, ok := maps["start_time"]; ok && startTime != "" {
 		delete(maps, "start_time")
 		query = query.Where("created_on >= ?", startTime)
@@ -98,19 +102,19 @@ func GetTemplates(pageNum int, pageSize int, text string, maps map[string]interf
 		query = query.Where("created_on <= ?", endTime)
 	}
 	query = query.Where(maps)
-	
+
 	if text != "" {
-		query = query.Where("name LIKE ? OR description LIKE ?", 
-			fmt.Sprintf("%%%s%%", text), 
+		query = query.Where("name LIKE ? OR description LIKE ?",
+			fmt.Sprintf("%%%s%%", text),
 			fmt.Sprintf("%%%s%%", text))
 	}
-	
+
 	query = query.Order("created_on DESC")
-	
+
 	if pageSize > 0 || pageNum > 0 {
 		query = query.Offset(pageNum).Limit(pageSize)
 	}
-	
+
 	query.Scan(&datas)
 	return datas, nil
 }
@@ -119,8 +123,8 @@ func GetTemplates(pageNum int, pageSize int, text string, maps map[string]interf
 func GetTemplatesTotal(text string, maps map[string]interface{}) (int64, error) {
 	var total int64
 	templateT := GetSchema(Template{})
-	
-	query := db.Table(templateT)
+
+	query := db.Table(templateT).Where(notDeleted(templateT))
 	if startTime, ok := maps["start_time"]; ok && startTime != "" {
 		delete(maps, "start_time")
 		query = query.Where("created_on >= ?", startTime)
@@ -130,13 +134,13 @@ func GetTemplatesTotal(text string, maps map[string]interface{}) (int64, error) 
 		query = query.Where("created_on <= ?", endTime)
 	}
 	query = query.Where(maps)
-	
+
 	if text != "" {
-		query = query.Where("name LIKE ? OR description LIKE ?", 
-			fmt.Sprintf("%%%s%%", text), 
+		query = query.Where("name LIKE ? OR description LIKE ?",
+			fmt.Sprintf("%%%s%%", text),
 			fmt.Sprintf("%%%s%%", text))
 	}
-	
+
 	query.Count(&total)
 	return total, nil
 }
@@ -145,12 +149,12 @@ func GetTemplatesTotal(text string, maps map[string]interface{}) (int64, error) 
 func GetTemplateByID(id string) (*TemplateResult, error) {
 	var data TemplateResult
 	templateT := GetSchema(Template{})
-	
-	err := db.Table(templateT).Where("id = ?", id).First(&data).Error
+
+	err := db.Table(templateT).Where(notDeleted(templateT)).Where("id = ?", id).First(&data).Error
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &data, nil
 }
 
@@ -162,6 +166,7 @@ func GetTemplatesByIDs(ids []string) ([]TemplateResult, error) {
 	templateT := GetSchema(Template{})
 	err := db.Table(templateT).
 		Select("id, name, status").
+		Where(notDeleted(templateT)).
 		Where("id IN ?", ids).
 		Scan(&datas).Error
 	if err != nil {
@@ -177,10 +182,10 @@ func ExistTemplateByID(id string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	
+
 	if template.ID != "" {
 		return true, nil
 	}
-	
+
 	return false, nil
 }

@@ -12,6 +12,7 @@ func GetTemplateInstancesByTemplateIDAndEnable(templateID string, enable int, re
 
 type SendTasksIns struct {
 	UUIDModel
+	SoftDeleteModel
 
 	TaskID      string `json:"task_id"  gorm:"type:varchar(12) ;default:'';index"`
 	TemplateID  string `json:"template_id"  gorm:"type:varchar(12) ;default:'';index"` // 模板ID
@@ -120,8 +121,8 @@ func AddTaskInsOne(ins SendTasksIns) error {
 }
 
 // DeleteMsgTaskIns 删除一条实例
-func DeleteMsgTaskIns(id string) error {
-	if err := db.Where("id = ?", id).Delete(&SendTasksIns{}).Error; err != nil {
+func ArchiveMsgTaskIns(id string) error {
+	if err := db.Unscoped().Where("id = ?", id).Delete(&SendTasksIns{}).Error; err != nil {
 		return err
 	}
 	return nil
@@ -145,6 +146,8 @@ func GetTemplateInsList(templateID string) ([]SendTasksInsRes, error) {
 		Table(insTable).
 		Select(fmt.Sprintf("%s.*, %s.name as way_name", insTable, waysTable)).
 		Joins(fmt.Sprintf("JOIN %s ON %s.way_id = %s.id", waysTable, insTable, waysTable)).
+		Where(notDeleted(insTable)).
+		Where(notDeleted(waysTable)).
 		Where(fmt.Sprintf("%s.template_id = ?", insTable), templateID).
 		Order(fmt.Sprintf("%s.created_on DESC", insTable)).
 		Scan(&insList).Error
@@ -167,6 +170,8 @@ func GetTemplateInsByIDs(ids []string) ([]SendTasksInsRes, error) {
 		Table(insTable).
 		Select(fmt.Sprintf("%s.*, %s.name as way_name", insTable, waysTable)).
 		Joins(fmt.Sprintf("JOIN %s ON %s.way_id = %s.id", waysTable, insTable, waysTable)).
+		Where(notDeleted(insTable)).
+		Where(notDeleted(waysTable)).
 		Where(fmt.Sprintf("%s.id IN ?", insTable), ids).
 		Scan(&insList).Error
 
@@ -188,6 +193,8 @@ func GetTemplateInsByTemplateIDs(templateIDs []string) ([]SendTasksInsRes, error
 		Table(insTable).
 		Select(fmt.Sprintf("%s.*, %s.name as way_name", insTable, waysTable)).
 		Joins(fmt.Sprintf("JOIN %s ON %s.way_id = %s.id", waysTable, insTable, waysTable)).
+		Where(notDeleted(insTable)).
+		Where(notDeleted(waysTable)).
 		Where(fmt.Sprintf("%s.template_id IN ?", insTable), templateIDs).
 		Scan(&insList).Error
 
@@ -211,6 +218,8 @@ func FindWayUsageNames(wayID string) ([]string, error) {
 		Table(insTable).
 		Select(fmt.Sprintf("DISTINCT %s.template_id AS template_id, %s.name AS template_name", insTable, templateTable)).
 		Joins(fmt.Sprintf("LEFT JOIN %s ON %s.template_id = %s.id", templateTable, insTable, templateTable)).
+		Where(notDeleted(insTable)).
+		Where(notDeleted(templateTable)).
 		Where(fmt.Sprintf("%s.way_id = ?", insTable), wayID).
 		Scan(&rows).Error
 	if err != nil {

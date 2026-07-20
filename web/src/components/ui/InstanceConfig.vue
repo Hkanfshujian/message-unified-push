@@ -1,19 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, watch, reactive } from 'vue'
-import { Button } from '@/components/ui/button'
-import { Badge } from "@/components/ui/badge"
-import EmptyTableState from '@/components/ui/EmptyTableState.vue'
-import { Input } from '@/components/ui/input'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Label } from '@/components/ui/label'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Switch } from '@/components/ui/switch'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import Pagination from '@/components/ui/Pagination.vue'
+import AppEmptyState from '@/components/ui/AppEmptyState.vue'
+import AppPagination from '@/components/ui/AppPagination.vue'
+import AppRowActions from '@/components/ui/AppRowActions.vue'
 import { CONSTANT } from '@/constant'
-import { toast } from 'vue-sonner'
 import { request } from '@/api/api'
+import { useRbacStore } from '@/store'
 import { generateBizUniqueID } from '@/util/uuid'
+import { confirmAction, notifyError, notifySuccess } from '@/util/uiFeedback'
 
 // 组件props
 interface Props {
@@ -26,6 +20,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   inDialog: false
 })
+const rbacStore = useRbacStore()
 
 // API 配置映射
 const apiConfig = computed(() => {
@@ -107,6 +102,7 @@ const currentDynamicRecipient = computed(() => {
   }
   return null
 })
+const canManageTemplateInstance = computed(() => rbacStore.hasPermission('message:template:instance'))
 
 const currentDynamicRecipientField = computed(() => currentDynamicRecipient.value?.field || '')
 
@@ -161,7 +157,7 @@ const handleChannelCheck = (channel: { id: string, name: string, type: string },
 const handleAddSubmit = async () => {
   // 验证是否选择了渠道
   if (!selectedChannel.value) {
-    toast.error('请选择发送渠道')
+    notifyError('请选择发送渠道')
     return
   }
 
@@ -181,18 +177,18 @@ const handleAddSubmit = async () => {
     // 如果要添加动态接收实例，但已有其他实例
     if (formData.value.allowMultiRecip === true) {
       if (hasDynamicInstance) {
-        toast.error(`该${entityName}已存在动态接收实例，一个${entityName}只能配置一个动态接收实例`)
+        notifyError(`该${entityName}已存在动态接收实例，一个${entityName}只能配置一个动态接收实例`)
         return
       }
       if (insTableData.value.length > 0) {
-        toast.error(`动态接收实例不能与固定接收实例混合使用，请先删除所有固定实例`)
+        notifyError(`动态接收实例不能与固定接收实例混合使用，请先删除所有固定实例`)
         return
       }
     }
     
     // 如果要添加固定接收实例，但已有动态接收实例
     if (formData.value.allowMultiRecip !== true && hasDynamicInstance) {
-      toast.error(`该${entityName}已配置动态接收实例，不能再添加固定接收实例`)
+      notifyError(`该${entityName}已配置动态接收实例，不能再添加固定接收实例`)
       return
     }
   }
@@ -200,7 +196,7 @@ const handleAddSubmit = async () => {
   // 验证内容类型
   const contentType = formData.value.templ_type
   if (!contentType) {
-    toast.error('请选择消息格式')
+    notifyError('请选择消息格式')
     return
   }
 
@@ -216,7 +212,7 @@ const handleAddSubmit = async () => {
     const templateContent = props.data?.[fieldName] || ''
     // 检查是否为空（去除所有空白字符后检查）
     if (!templateContent.trim()) {
-      toast.error(`模板的 ${contentType} 格式内容为空，无法添加此类型的实例`)
+      notifyError(`模板的 ${contentType} 格式内容为空，无法添加此类型的实例`)
       return
     }
   }
@@ -241,17 +237,17 @@ const handleAddSubmit = async () => {
       }
     } as any)
     if (response.status === 200 && response.data.code === 200) {
-      toast.success(response.data.msg)
+      notifySuccess(response.data.msg)
       // 重新加载实例列表
       await queryInsListData()
       // 清空表单
       selectedChannel.value = null
       formData.value = { allowMultiRecip: false }
     } else {
-      toast.error(response.data.msg || '添加实例失败')
+      notifyError(response.data.msg || '添加实例失败')
     }
   } catch (error: any) {
-    toast.error(error.response?.data?.msg || '添加实例失败')
+    notifyError(error.response?.data?.msg || '添加实例失败')
   }
 }
 
@@ -361,7 +357,7 @@ const confirmToggleDynamicRecipient = async () => {
   if (!next && recipientField) {
     const recipient = dynamicRecipientInput.value.trim()
     if (!recipient) {
-      toast.error(`关闭动态接收者前请先填写固定接收者（${recipientField}）`)
+      notifyError(`关闭动态接收者前请先填写固定接收者（${recipientField}）`)
       return
     }
     config[recipientField] = recipient
@@ -380,16 +376,16 @@ const confirmToggleDynamicRecipient = async () => {
       }
     } as any)
     if (response.status === 200 && response.data.code === 200) {
-      toast.success(response.data.msg || '更新成功')
+      notifySuccess(response.data.msg || '更新成功')
       await queryInsListData()
       dynamicConfirmOpen.value = false
       dynamicToggleTarget.value = null
       dynamicRecipientInput.value = ''
     } else {
-      toast.error(response.data.msg || '更新失败')
+      notifyError(response.data.msg || '更新失败')
     }
   } catch (error: any) {
-    toast.error(error.response?.data?.msg || '更新失败')
+    notifyError(error.response?.data?.msg || '更新失败')
   }
 }
 
@@ -416,22 +412,23 @@ const queryInsListData = async () => {
 }
 
 // 删除实例
-const handleDeleteIns = async (insId: string) => {
+const handleDeleteIns = async (ins: any) => {
+  await confirmAction(`确认删除实例“${ins?.way_name || ins?.id || '未命名'}”？该操作不可恢复。`, '删除实例')
   try {
-    const response = await request.post(apiConfig.value.deleteIns, { id: insId }, {
+    const response = await request.post(apiConfig.value.deleteIns, { id: ins.id }, {
       meta: {
         silentBizToast: true,
         silentErrorToast: true
       }
     } as any)
     if (response.status === 200 && response.data.code === 200) {
-      toast.success(response.data.msg)
+      notifySuccess(response.data.msg)
       await queryInsListData()
     } else {
-      toast.error(response.data.msg || '删除失败')
+      notifyError(response.data.msg || '删除失败')
     }
   } catch (error: any) {
-    toast.error(error.response?.data?.msg || '删除失败')
+    notifyError(error.response?.data?.msg || '删除失败')
   }
 }
 
@@ -458,11 +455,11 @@ const handleToggleEnable = async (insId: string, currentStatus: number | string)
     } as any)
     
     if (response.status === 200 && response.data.code === 200) {
-      toast.success(response.data.msg)
+      notifySuccess(response.data.msg)
       // 重新加载确保数据同步
       await queryInsListData()
     } else {
-      toast.error(response.data.msg || '更新失败')
+      notifyError(response.data.msg || '更新失败')
       // 失败时恢复原状态
       if (insIndex !== -1) {
         insTableData.value[insIndex].enable = currentStatus
@@ -470,7 +467,7 @@ const handleToggleEnable = async (insId: string, currentStatus: number | string)
     }
   } catch (error: any) {
     console.error('状态切换失败:', error)
-    toast.error(error.response?.data?.msg || '更新失败')
+    notifyError(error.response?.data?.msg || '更新失败')
     // 失败时恢复原状态
     if (insIndex !== -1) {
       insTableData.value[insIndex].enable = currentStatus
@@ -499,19 +496,16 @@ const queryChannelList = async (page = 1) => {
       channelState.currPage = page
     }
   } catch (error) {
-    toast.error('获取渠道列表失败')
+    notifyError('获取渠道列表失败')
   } finally {
     channelState.loading = false
   }
 }
 
-const handleChannelPageChange = async (page: number) => {
+const handleChannelPaginationChange = async ({ page, pageSize }: { page: number; pageSize: number }) => {
+  channelState.currPage = page
+  channelState.pageSize = pageSize
   await queryChannelList(page)
-}
-
-const handleChannelPageSizeChange = async (size: number) => {
-  channelState.pageSize = size
-  await queryChannelList(1)
 }
 
 const handleChannelSearch = async () => {
@@ -534,269 +528,497 @@ defineExpose({
 </script>
 
 <template>
-  <div class="space-y-4" :class="{ 'px-4 pb-4': inDialog }">
-    <!-- 信息展示区域 -->
-    <div v-if="data" class="p-3 bg-muted rounded-lg space-y-1">
-      <div class="flex items-baseline gap-2">
-        <span class="text-base font-semibold">{{ data[apiConfig.nameField] }}</span>
-        <Badge variant="outline" class="text-xs">{{ data.id }}</Badge>
+  <div class="instance-config" :class="{ 'is-in-dialog': inDialog }">
+    <section v-if="data" class="instance-config-section instance-config-summary">
+      <div class="instance-config-summary-main">
+        <div class="instance-config-eyebrow">当前模板</div>
+        <div class="instance-config-summary-title">
+          <h3>{{ data[apiConfig.nameField] }}</h3>
+          <el-tag effect="plain" size="small">{{ data.id }}</el-tag>
+        </div>
+        <p>选择发送渠道并完成实例配置，添加后即可用于此模板。</p>
       </div>
-      <div class="text-xs text-muted-foreground">
-        为此模板配置发送实例
+      <div class="instance-config-summary-count">
+        <strong>{{ insTableData.length }}</strong>
+        <span>已关联实例</span>
       </div>
-    </div>
+    </section>
 
-    <!-- 添加实例表单 -->
-    <div class="space-y-4">
-      <div class="space-y-2">
-        <Label class="text-sm font-medium">选择发送渠道</Label>
-        <div class="grid grid-cols-1 md:grid-cols-12 gap-2">
-          <Input
-            v-model="channelFilters.name"
-            class="md:col-span-6"
-            placeholder="按渠道名称模糊搜索..."
-            @keyup.enter="handleChannelSearch"
-          />
-          <select
-            v-model="channelFilters.type"
-            class="h-9 rounded-md border border-input bg-transparent px-3 text-sm md:col-span-4"
-            @change="handleChannelSearch"
-          >
-            <option v-for="option in channelTypeOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </option>
-          </select>
-          <Button class="md:col-span-2" size="sm" variant="outline" @click="handleChannelSearch">搜索</Button>
+    <section class="instance-config-section">
+      <div class="instance-config-section-head">
+        <div>
+          <h3>选择发送渠道</h3>
+          <p>从已有渠道中筛选并选择一个渠道。</p>
         </div>
       </div>
 
-      <div class="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead class="w-12">选择</TableHead>
-              <TableHead class="w-16">序号</TableHead>
-              <TableHead class="w-40">渠道ID</TableHead>
-              <TableHead>渠道名称</TableHead>
-              <TableHead class="w-32">渠道类型</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow
-              v-for="(channel, idx) in channelState.list"
-              :key="channel.id"
-              class="cursor-pointer"
-              :class="selectedChannel?.id === channel.id ? 'bg-blue-50 dark:bg-blue-900/20' : ''"
-              @click="handleSelectChannel(channel)"
-            >
-              <TableCell @click.stop>
-                <input
-                  type="checkbox"
-                  class="h-4 w-4"
-                  :checked="isChannelChecked(channel.id)"
-                  @change="(event) => handleChannelCheck(channel, (event.target as HTMLInputElement).checked)"
-                />
-              </TableCell>
-              <TableCell>{{ (channelState.currPage - 1) * channelState.pageSize + idx + 1 }}</TableCell>
-              <TableCell class="font-mono text-xs">{{ channel.id }}</TableCell>
-              <TableCell>{{ channel.name }}</TableCell>
-              <TableCell>{{ formatChannelTypeLabel(channel.type) }}</TableCell>
-            </TableRow>
-            <TableRow v-if="!channelState.loading && channelState.list.length === 0">
-              <TableCell colspan="5" class="h-20 text-center text-muted-foreground">
-                暂无匹配渠道
-              </TableCell>
-            </TableRow>
-            <TableRow v-if="channelState.loading">
-              <TableCell colspan="5" class="h-20 text-center text-muted-foreground">
-                加载中...
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+      <div class="instance-config-filter-grid">
+        <el-input
+          v-model="channelFilters.name"
+          placeholder="按渠道名称搜索"
+          @keyup.enter="handleChannelSearch"
+        />
+        <el-select v-model="channelFilters.type" @change="handleChannelSearch">
+          <el-option v-for="option in channelTypeOptions" :key="option.value" :label="option.label" :value="option.value" />
+        </el-select>
+        <el-button type="primary" @click="handleChannelSearch">搜索</el-button>
       </div>
 
-      <Pagination
-        :total="channelState.total"
-        :current-page="channelState.currPage"
-        :page-size="channelState.pageSize"
-        @page-change="handleChannelPageChange"
-        @page-size-change="handleChannelPageSizeChange"
-      />
+      <div class="instance-config-table-shell">
+        <el-table :data="channelState.list" v-loading="channelState.loading" row-key="id" @row-click="handleSelectChannel">
+          <el-table-column label="选择" width="64">
+            <template #default="{ row }">
+              <el-checkbox :model-value="isChannelChecked(row.id)" @change="(checked: boolean) => handleChannelCheck(row, checked)" @click.stop />
+            </template>
+          </el-table-column>
+          <el-table-column label="序号" width="72">
+            <template #default="{ $index }">{{ (channelState.currPage - 1) * channelState.pageSize + $index + 1 }}</template>
+          </el-table-column>
+          <el-table-column label="渠道ID" prop="id" width="180" />
+          <el-table-column label="渠道名称" prop="name" min-width="150" />
+          <el-table-column label="渠道类型" width="150">
+            <template #default="{ row }">{{ formatChannelTypeLabel(row.type) }}</template>
+          </el-table-column>
+          <template #empty>当前没有匹配渠道</template>
+        </el-table>
+      </div>
 
-      <div class="flex justify-between items-center">
-        <div class="text-xs text-muted-foreground">
-          {{ selectedChannel ? `已选择：${selectedChannel.name}（${formatChannelTypeLabel(selectedChannel.type)}）` : '请选择一个渠道后再添加实例' }}
+      <div class="instance-config-pagination">
+        <AppPagination
+          v-model:current-page="channelState.currPage"
+          v-model:page-size="channelState.pageSize"
+          :total="channelState.total"
+          compact
+          @change="handleChannelPaginationChange"
+        />
+      </div>
+    </section>
+
+    <section class="instance-config-section instance-config-action-section">
+      <div class="instance-config-section-head">
+        <div>
+          <h3>添加实例</h3>
+          <p>确认当前选择后，将渠道作为新的发送实例关联到模板。</p>
         </div>
-        <Button size="sm" variant="outline" @click="handleAddSubmit">添加实例</Button>
       </div>
-    </div>
+      <div class="instance-config-action-bar">
+        <div class="instance-config-selection-status" :class="{ 'is-selected': selectedChannel }">
+          <span class="instance-config-status-dot" />
+          <span>{{ selectedChannel ? `已选择：${selectedChannel.name}（${formatChannelTypeLabel(selectedChannel.type)}）` : '尚未选择发送渠道' }}</span>
+        </div>
+        <el-button type="primary" :disabled="!selectedChannel" @click="handleAddSubmit">添加实例</el-button>
+      </div>
+    </section>
 
-    <!-- 渠道配置表单 -->
-    <div v-if="currentChannelConfig" class="mt-4">
-      <!-- 动态接收者勾选框 -->
-      <div v-if="currentDynamicRecipient?.support" class="mb-4 p-3 border rounded-lg bg-muted/50 dark:bg-muted/30">
-        <div class="flex items-center space-x-2">
-          <Switch 
-            :model-value="formData.allowMultiRecip" 
+    <section v-if="currentChannelConfig" class="instance-config-section">
+      <div class="instance-config-section-head">
+        <div>
+          <h3>渠道配置</h3>
+          <p>设置接收者模式、渠道参数和消息格式。</p>
+        </div>
+      </div>
+
+      <div v-if="currentDynamicRecipient?.support" class="instance-config-mode-panel">
+        <div class="flex items-center gap-2">
+          <el-switch
+            :id="`allow-multi-${selectedChannel?.id || 'none'}`"
+            :model-value="formData.allowMultiRecip"
             @update:model-value="(val: boolean) => formData.allowMultiRecip = val"
-            :id="`allow-multi-${selectedChannel?.id || 'none'}`" 
           />
-          <Label :for="`allow-multi-${selectedChannel?.id || 'none'}`" class="text-sm font-medium cursor-pointer">
+          <label :for="`allow-multi-${selectedChannel?.id || 'none'}`" class="text-sm font-medium cursor-pointer">
             动态接收者模式
-          </Label>
+          </label>
         </div>
-        <p class="text-xs text-muted-foreground mt-1 ml-8">
-          {{ formData.allowMultiRecip ? '支持动态接收者，发送时通过API指定接收者列表（群发模式）' : '固定接收者模式，需要在下方配置固定接收者' }}
-        </p>
-        <p v-if="formData.allowMultiRecip" class="text-xs text-orange-500 dark:text-orange-400 mt-1 ml-8 font-medium">
-          ⚠️ 注意：一个模板只能配置一个动态接收实例，且不能与固定接收实例混合使用
+        <p>{{ formData.allowMultiRecip ? '支持动态接收者，发送时通过 API 指定接收者列表（群发模式）' : '固定接收者模式，需要在下方配置固定接收者' }}</p>
+        <p v-if="formData.allowMultiRecip" class="instance-config-warning">
+          一个模板只能配置一个动态接收实例，且不能与固定接收实例混合使用。
         </p>
       </div>
 
-      <!-- 接收者输入字段 -->
-      <div v-if="shouldShowRecipientInput" class="mb-2">
-        <Label class="text-sm font-medium text-foreground mb-1">实例配置</Label>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="space-y-2">
-            <label class="text-xs font-medium text-muted-foreground">
-              {{ currentDynamicRecipient?.label }}
-            </label>
-            <Input 
-              v-model="formData[currentDynamicRecipientField]" 
-              :placeholder="`请输入${currentDynamicRecipient?.desc}`"
-              type="text" 
-              class="text-sm" 
-            />
+      <div class="instance-config-fields">
+        <div v-if="shouldShowRecipientInput" class="instance-config-field-group">
+          <div class="instance-config-field-title">接收者配置</div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-muted-foreground">{{ currentDynamicRecipient?.label }}</label>
+              <el-input
+                v-model="formData[currentDynamicRecipientField]"
+                :placeholder="`请输入${currentDynamicRecipient?.desc}`"
+                type="text"
+              />
+            </div>
+          </div>
+          <p v-if="isQyWeiXinFixedRecipientEmpty" class="mt-2 text-xs text-destructive">
+            企业微信应用固定模式下 to_user 不能为空。为空将无法保存，且系统不会兜底为 @all。
+          </p>
+        </div>
+
+        <div v-if="currentChannelConfig.taskInsInputs && currentChannelConfig.taskInsInputs.length > 0" class="instance-config-field-group">
+          <div class="instance-config-field-title">实例配置</div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div
+              v-for="input in currentChannelConfig.taskInsInputs.filter((inp: any) => inp.col !== currentDynamicRecipient?.field)"
+              :key="input.col"
+              class="space-y-2"
+            >
+              <label class="text-xs font-medium text-muted-foreground">{{ input.label || input.desc }}</label>
+              <el-input
+                v-model="formData[input.col]"
+                :placeholder="input.desc || `请输入${input.label}`"
+                :type="input.type || 'text'"
+                class="w-full"
+              />
+            </div>
           </div>
         </div>
-        <p v-if="isQyWeiXinFixedRecipientEmpty" class="mt-2 text-xs text-destructive">
-          企业微信应用固定模式下 to_user 不能为空。为空将无法保存，且系统不会兜底为 @all。
-        </p>
-      </div>
-      
-      <!-- 实例配置输入字段（排除动态接收者字段） -->
-      <div v-if="currentChannelConfig.taskInsInputs && currentChannelConfig.taskInsInputs.length > 0" class="mb-2">
-        <Label class="text-sm font-medium mb-1">实例配置</Label>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div 
-            v-for="input in currentChannelConfig.taskInsInputs.filter((inp: any) => inp.col !== currentDynamicRecipient?.field)" 
-            :key="input.col" 
-            class="space-y-2"
-          >
-            <label class="text-xs font-medium text-muted-foreground">{{ input.label || input.desc }}</label>
-            <Input 
-              v-model="formData[input.col]" 
-              :placeholder="input.desc || `请输入${input.label}`"
-              :type="input.type || 'text'" 
-              class="w-full" 
-            />
-          </div>
+
+        <div v-if="currentChannelConfig.taskInsRadios && currentChannelConfig.taskInsRadios.length > 0" class="instance-config-field-group">
+          <div class="instance-config-field-title">消息格式</div>
+          <el-radio-group v-model="formData.templ_type" class="flex flex-wrap gap-x-4 gap-y-2">
+            <el-radio v-for="radio in currentChannelConfig.taskInsRadios" :key="radio.subLabel" :value="radio.subLabel">{{ radio.subLabel }}</el-radio>
+          </el-radio-group>
         </div>
       </div>
+    </section>
 
-      <!-- 单选框 -->
-      <div v-if="currentChannelConfig.taskInsRadios && currentChannelConfig.taskInsRadios.length > 0" class="mt-4">
-        <Label class="text-sm font-medium mb-2">消息格式</Label>
-        <RadioGroup v-model="formData.templ_type" class="flex gap-4">
-          <div v-for="radio in currentChannelConfig.taskInsRadios" :key="radio.subLabel" class="flex items-center space-x-2">
-            <RadioGroupItem :value="radio.subLabel" :id="radio.subLabel" />
-            <Label :for="radio.subLabel" class="text-sm cursor-pointer">{{ radio.subLabel }}</Label>
-          </div>
-        </RadioGroup>
+    <section class="instance-config-section">
+      <div class="instance-config-section-head">
+        <div>
+          <h3>已关联实例</h3>
+          <p>查看和管理此模板当前关联的发送实例。</p>
+        </div>
+        <el-tag effect="plain" size="small">共 {{ insTableData.length }} 条</el-tag>
       </div>
-    </div>
-
-    <!-- 关联的实例表 -->
-    <div class="mt-4">
-      <h3 class="text-sm font-medium mb-3">已经关联的实例</h3>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>渠道名称</TableHead>
-            <TableHead>内容类型</TableHead>
-            <TableHead>接收者</TableHead>
-            <TableHead>动态接收者</TableHead>
-            <TableHead class="text-center">操作</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow v-for="ins in insTableData" :key="ins.id">
-            <TableCell>
+      <div class="instance-config-table-shell instance-config-instance-table">
+        <el-table :data="insTableData" row-key="id">
+          <el-table-column label="渠道名称" min-width="150">
+            <template #default="{ row: ins }">
               <div class="font-medium">{{ ins.way_name || '未命名' }}</div>
               <div class="text-xs text-muted-foreground">{{ ins.way_type }}</div>
-            </TableCell>
-            <TableCell>
-              <Badge variant="secondary">{{ ins.content_type }}</Badge>
-            </TableCell>
-            <TableCell>
-              <Badge v-if="formatInsConfigDisplay(ins)" variant="secondary">{{ formatInsConfigDisplay(ins) }}</Badge>
+            </template>
+          </el-table-column>
+          <el-table-column label="内容类型" min-width="110">
+            <template #default="{ row: ins }">
+              <el-tag type="info">{{ ins.content_type }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="接收者" min-width="140">
+            <template #default="{ row: ins }">
+              <el-tag v-if="formatInsConfigDisplay(ins)" type="info">{{ formatInsConfigDisplay(ins) }}</el-tag>
               <span v-else class="text-sm text-muted-foreground">-</span>
-            </TableCell>
-            <TableCell>
+            </template>
+          </el-table-column>
+          <el-table-column label="动态接收者" min-width="140">
+            <template #default="{ row: ins }">
               <div class="flex items-center gap-2">
-                <Switch
+                <el-switch
                   :model-value="isDynamicRecipientEnabled(ins)"
+                  :disabled="!canManageTemplateInstance"
                   @update:model-value="() => handleToggleDynamicRecipient(ins)"
                 />
                 <span class="text-xs" :class="isDynamicRecipientEnabled(ins) ? 'text-emerald-600' : 'text-muted-foreground'">
                   {{ isDynamicRecipientEnabled(ins) ? '开启' : '关闭' }}
                 </span>
               </div>
-            </TableCell>
-            <TableCell class="text-center">
-              <div class="flex items-center justify-center gap-2">
-                <Switch 
-                  :model-value="ins.enable === 1" 
-                  @update:model-value="() => handleToggleEnable(ins.id, ins.enable)" 
-                />
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  class="text-red-500 border-red-300 hover:bg-red-50 hover:border-red-400 hover:text-red-600 hover:shadow-md transition-all duration-[var(--motion-fast)]" 
-                  @click="handleDeleteIns(ins.id)"
-                >
-                  删除
-                </Button>
-              </div>
-            </TableCell>
-          </TableRow>
-          <TableRow v-if="!insTableData || insTableData.length === 0">
-            <TableCell :colspan="5" class="h-24">
-              <EmptyTableState title="暂无实例" description="还没有配置任何实例，请先添加" />
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-    </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="190" align="center">
+            <template #default="{ row: ins }">
+              <AppRowActions :actions="[
+                { key: 'stop', label: '停用', kind: 'write', permission: 'message:template:instance', visible: ins.enable === 1, danger: true, onClick: () => handleToggleEnable(ins.id, ins.enable) },
+                { key: 'start', label: '启用', kind: 'write', permission: 'message:template:instance', visible: ins.enable !== 1, onClick: () => handleToggleEnable(ins.id, ins.enable) },
+                { key: 'delete', label: '删除', kind: 'write', permission: 'message:template:instance', danger: true, onClick: () => handleDeleteIns(ins) }
+              ]" />
+            </template>
+          </el-table-column>
+          <template #empty>
+            <AppEmptyState description="还没有配置任何实例，请先添加" />
+          </template>
+        </el-table>
+      </div>
+    </section>
 
-    <Dialog v-model:open="dynamicConfirmOpen">
-      <DialogContent class="sm:max-w-[420px]">
-        <DialogHeader>
-          <DialogTitle>确认操作</DialogTitle>
-        </DialogHeader>
-        <p class="text-sm text-muted-foreground">
-          确认将动态接收者模式{{ dynamicToggleNext ? '开启' : '关闭' }}吗？
-        </p>
-        <div v-if="shouldRequireRecipientInput" class="space-y-2">
-          <Label class="text-sm">固定接收者（to_user）</Label>
-          <Input
-            v-model="dynamicRecipientInput"
-            placeholder="关闭动态接收者前请输入固定接收者"
-          />
-          <p class="text-xs text-muted-foreground">关闭后将按该固定接收者发送</p>
-        </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" @click="cancelToggleDynamicRecipient">取消</Button>
-          <Button
-            type="button"
-            :variant="dynamicToggleNext ? 'default' : 'destructive'"
-            @click="confirmToggleDynamicRecipient"
-          >
-            确认
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <el-dialog v-model="dynamicConfirmOpen" title="确认操作" width="420px" class="app-nested-dialog" append-to-body>
+      <p class="text-sm text-muted-foreground">
+        确认将动态接收者模式{{ dynamicToggleNext ? '开启' : '关闭' }}吗？
+      </p>
+      <div v-if="shouldRequireRecipientInput" class="space-y-2">
+        <label class="text-sm">固定接收者（to_user）</label>
+        <el-input v-model="dynamicRecipientInput" placeholder="关闭动态接收者前请输入固定接收者" />
+        <p class="text-xs text-muted-foreground">关闭后将按该固定接收者发送</p>
+      </div>
+      <template #footer>
+        <el-button type="button" @click="cancelToggleDynamicRecipient">取消</el-button>
+        <el-button :type="dynamicToggleNext ? 'primary' : 'danger'" @click="confirmToggleDynamicRecipient">确认</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.instance-config {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.instance-config-section {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--dora-border, var(--border));
+  border-radius: var(--dora-surface-radius, 8px);
+  background: var(--app-overlay-surface, var(--card));
+}
+
+.instance-config-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.instance-config-summary-main {
+  min-width: 0;
+}
+
+.instance-config-eyebrow {
+  margin-bottom: 4px;
+  color: var(--dora-text-muted, var(--muted-foreground));
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.instance-config-summary-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.instance-config-summary-title h3,
+.instance-config-section-head h3 {
+  margin: 0;
+  color: var(--dora-text, var(--foreground));
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.instance-config-summary-title h3 {
+  overflow: hidden;
+  font-size: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.instance-config-summary-main p,
+.instance-config-section-head p {
+  margin: 4px 0 0;
+  color: var(--dora-text-muted, var(--muted-foreground));
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.instance-config-summary-count {
+  display: grid;
+  flex: 0 0 auto;
+  min-width: 88px;
+  padding-left: 20px;
+  border-left: 1px solid var(--dora-border, var(--border));
+  text-align: right;
+}
+
+.instance-config-summary-count strong {
+  color: var(--dora-text, var(--foreground));
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.instance-config-summary-count span {
+  margin-top: 3px;
+  color: var(--dora-text-muted, var(--muted-foreground));
+  font-size: 12px;
+}
+
+.instance-config-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.instance-config-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(180px, 0.8fr) auto;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.instance-config-filter-grid .el-button {
+  min-width: 88px;
+}
+
+.instance-config-table-shell {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--dora-border, var(--border));
+}
+
+.instance-config-table-shell :deep(.el-table) {
+  min-width: 680px;
+  border-radius: 0;
+}
+
+.instance-config-table-shell :deep(.el-table::before) {
+  display: none;
+}
+
+.instance-config-instance-table :deep(.el-table) {
+  min-width: 760px;
+}
+
+.instance-config-pagination :deep(.app-pagination-wrap) {
+  justify-content: flex-start;
+  padding: 10px 0 0;
+}
+
+.instance-config-pagination :deep(.app-pagination-bar) {
+  width: auto;
+  max-width: 100%;
+  gap: 8px;
+}
+
+.instance-config-action-section {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+.instance-config-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--dora-border, var(--border)) 78%, transparent);
+  background: color-mix(in srgb, var(--app-overlay-surface, var(--card)) 92%, var(--muted));
+}
+
+.instance-config-selection-status {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  color: var(--dora-text-muted, var(--muted-foreground));
+  font-size: 13px;
+}
+
+.instance-config-selection-status span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.instance-config-status-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--dora-border, var(--border));
+}
+
+.instance-config-selection-status.is-selected {
+  color: var(--dora-text, var(--foreground));
+  font-weight: 500;
+}
+
+.instance-config-selection-status.is-selected .instance-config-status-dot {
+  background: var(--el-color-success);
+}
+
+.instance-config-mode-panel {
+  padding: 12px;
+  border: 1px solid var(--dora-border, var(--border));
+  background: color-mix(in srgb, var(--app-overlay-surface, var(--card)) 90%, var(--muted));
+}
+
+.instance-config-mode-panel > p {
+  margin: 6px 0 0 32px;
+  color: var(--dora-text-muted, var(--muted-foreground));
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.instance-config-mode-panel .instance-config-warning {
+  color: var(--el-color-warning-dark-2);
+  font-weight: 500;
+}
+
+.instance-config-fields {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.instance-config-field-group + .instance-config-field-group {
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in srgb, var(--dora-border, var(--border)) 72%, transparent);
+}
+
+.instance-config-field-title {
+  margin-bottom: 10px;
+  color: var(--dora-text, var(--foreground));
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (max-width: 760px) {
+  .instance-config {
+    gap: 10px;
+  }
+
+  .instance-config-section {
+    padding: 12px;
+  }
+
+  .instance-config-summary {
+    align-items: flex-start;
+  }
+
+  .instance-config-summary-title {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .instance-config-summary-count {
+    min-width: 70px;
+    padding-left: 12px;
+  }
+
+  .instance-config-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .instance-config-filter-grid .el-button {
+    width: 100%;
+  }
+
+  .instance-config-action-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .instance-config-action-bar .el-button {
+    width: 100%;
+  }
+
+  .instance-config-selection-status span:last-child {
+    white-space: normal;
+  }
+
+  .instance-config-pagination :deep(.app-pagination-bar) {
+    flex-wrap: wrap;
+  }
+}
+</style>

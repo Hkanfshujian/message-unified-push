@@ -2,10 +2,10 @@ package v1
 
 import (
 	"net/http"
-	"strconv"
 	"ops-message-unified-push/pkg/app"
 	"ops-message-unified-push/pkg/e"
 	"ops-message-unified-push/service/mq_source_service"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -86,7 +86,7 @@ func (c *MQSourceController) EditMQSource(ctx *gin.Context) {
 }
 
 // DeleteMQSource 删除消息队列数据源
-func (c *MQSourceController) DeleteMQSource(ctx *gin.Context) {
+func (c *MQSourceController) ArchiveMQSource(ctx *gin.Context) {
 	var (
 		appG = app.Gin{C: ctx}
 	)
@@ -94,7 +94,7 @@ func (c *MQSourceController) DeleteMQSource(ctx *gin.Context) {
 	id := ctx.Param("id")
 
 	service := mq_source_service.MQSourceService{}
-	err := service.Delete(id)
+	err := service.Archive(id)
 	if err != nil {
 		appG.CResponse(http.StatusInternalServerError, e.GetMsg(e.ERROR_DELETE_SOURCE_FAIL), nil)
 		return
@@ -172,4 +172,3 @@ func (c *MQSourceController) GetMQSourceByID(ctx *gin.Context) {
 
 	appG.CResponse(http.StatusOK, "ok", source)
 }
-

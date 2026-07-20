@@ -22,6 +22,9 @@ var (
 	mutex        sync.Mutex
 )
 
+// SoftDeleteModel is not applicable to the scheduler's in-memory registry;
+// the database-backed schedule remains recoverable independently.
+
 func init() {
 	CronInstance = cron.New()
 	CronInstance.Start()
@@ -57,6 +60,12 @@ func RemoveTask(taskID cron.EntryID) {
 	defer mutex.Unlock()
 	if _, ok := TaskList[taskID]; ok {
 		CronInstance.Remove(taskID)
-		delete(TaskList, taskID)
+		next := make(map[cron.EntryID]*ScheduledTask, len(TaskList)-1)
+		for entryID, task := range TaskList {
+			if entryID != taskID {
+				next[entryID] = task
+			}
+		}
+		TaskList = next
 	}
 }

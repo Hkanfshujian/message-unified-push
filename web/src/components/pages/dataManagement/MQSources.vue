@@ -1,22 +1,28 @@
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import EmptyTableState from '@/components/ui/EmptyTableState.vue'
-import Pagination from '@/components/ui/Pagination.vue'
-import { toast } from 'vue-sonner'
-import { request } from '@/api/api'
-// @ts-ignore
+import { Download, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import AppEmptyState from '@/components/ui/AppEmptyState.vue'
+import AppFormDrawer from '@/components/ui/AppFormDrawer.vue'
+import AppPagination from '@/components/ui/AppPagination.vue'
+import AppRowActions from '@/components/ui/AppRowActions.vue'
+import AppStatusTag from '@/components/ui/AppStatusTag.vue'
+import AppTable, { type AppTableColumn } from '@/components/ui/AppTable.vue'
+import AppTableToolbar from '@/components/ui/table-toolbar/AppTableToolbar.vue'
+import AppTruncate from '@/components/ui/AppTruncate.vue'
+import { mqApi } from '@/api/mq'
+import { settingsApi } from '@/api/settings'
 import { getPageSize } from '@/util/pageUtils'
+import { createTableToolbarState, getVisibleToolbarColumns } from '@/components/ui/table-toolbar/tableToolbar'
+import type { TableToolbarColumn } from '@/components/ui/table-toolbar/types'
 import { appendDateRangeQuery, pickDateRangeQuery } from '@/util/routeQuery'
+import { downloadBlob, notifyError, notifySuccess } from '@/util/uiFeedback'
 import MQSourceForm from './MQSourceForm.vue'
+import { zhCN } from '@/locales/zh-CN'
 
-interface MQSourceItem {
+const messages = zhCN.mqSources
+
+interface MQSourceItem extends Record<string, unknown> {
   id: string
   name: string
   type: string
@@ -31,24 +37,33 @@ interface MQSourceItem {
   binding_count?: number
 }
 
-let state = reactive({
+const route = useRoute()
+const router = useRouter()
+const STATUS_UNTESTED = '__untested__'
+
+const state = reactive({
   tableData: [] as MQSourceItem[],
   total: 0,
   currPage: 1,
   pageSize: getPageSize(),
   search: '',
+  loading: false,
+  error: '',
+  stale: false
 })
-const route = useRoute()
-const router = useRouter()
 
-// 状态过滤
 const selectedStatus = ref('all')
-const STATUS_UNTESTED = '__untested__'
-
-// 队列类型过滤
 const selectedType = ref('all')
+const isAddDialogOpen = ref(false)
+const isEditDialogOpen = ref(false)
+const isTestDialogOpen = ref(false)
+const isDeleteConfirmOpen = ref(false)
+const editData = ref<MQSourceItem | null>(null)
+const testResult = ref<{ success: boolean; message?: string; error?: string } | null>(null)
+const deleteTarget = ref<MQSourceItem | null>(null)
+const deleteConfirmInput = ref('')
+let autoRefreshTimer: number | null = null
 
-// 队列类型选项
 const typeOptions = [
   { value: 'all', label: '全部类型' },
   { value: 'rocketmq', label: 'RocketMQ' },
@@ -56,17 +71,74 @@ const typeOptions = [
   { value: 'rabbitmq', label: 'RabbitMQ' }
 ]
 
-// Sheet 相关状态
-const isAddDialogOpen = ref(false)
-const isEditDialogOpen = ref(false)
-const isTestDialogOpen = ref(false)
-const isDeleteConfirmOpen = ref(false)
+const statusOptions = [
+  { value: 'all', label: '全部状态' },
+  { value: 'success', label: '在线' },
+  { value: 'failed', label: '离线' },
+  { value: STATUS_UNTESTED, label: '未测试' }
+]
 
-const editData = ref<MQSourceItem | null>(null)
-const testResult = ref<{ success: boolean; message?: string; error?: string } | null>(null)
-const deleteTarget = ref<MQSourceItem | null>(null)
-const deleteConfirmInput = ref('')
-let autoRefreshTimer: number | null = null
+const columns: AppTableColumn[] = [
+  { prop: 'index', label: '序号', width: 80, align: 'center' },
+  { prop: 'id', label: 'ID', minWidth: 130 },
+  { prop: 'name', label: '队列名称', minWidth: 180 },
+  { prop: 'type', label: '队列类型', width: 120, align: 'center' },
+  { prop: 'namesrv_addr', label: '队列地址', minWidth: 260 },
+  { prop: 'binding_count', label: '外部绑定', width: 120, align: 'center' },
+  { prop: 'last_test_status', label: '状态', width: 110, align: 'center' },
+  { prop: 'last_test_time', label: '最后测试时间', minWidth: 170 },
+  { prop: 'actions', label: '操作', width: 190, align: 'center', fixed: 'right' }
+]
+
+const toolbarColumns: TableToolbarColumn[] = columns.map(column => ({
+  key: column.prop || column.label,
+  label: column.label,
+  required: column.prop === 'index' || column.prop === 'actions'
+}))
+
+const tableToolbar = reactive(createTableToolbarState(toolbarColumns))
+const visibleColumns = computed(() => getVisibleToolbarColumns(columns, tableToolbar.visibleColumns))
+
+const refreshTable = async () => {
+  if (tableToolbar.refreshing) return
+  tableToolbar.refreshing = true
+  try {
+    await queryListData()
+  } finally {
+    tableToolbar.refreshing = false
+  }
+}
+
+const parsePositiveNumber = (value: unknown, fallback: number) => {
+  const n = Number(value)
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback
+}
+
+const buildRouteQuery = () => {
+  const nextQuery: Record<string, string> = {
+    page: String(state.currPage),
+    page_size: String(state.pageSize)
+  }
+  const name = state.search.trim()
+  if (name) nextQuery.name = name
+  if (selectedType.value !== 'all') nextQuery.type = selectedType.value
+  if (selectedStatus.value !== 'all') nextQuery.status = selectedStatus.value
+  appendDateRangeQuery(nextQuery, route.query as Record<string, unknown>)
+  return nextQuery
+}
+
+const syncRouteQuery = async () => {
+  await router.replace({ path: route.path, query: buildRouteQuery() })
+}
+
+const getTypeText = (type: string) => typeOptions.find((item) => item.value === type)?.label || type
+
+const normalizedStatus = (status: string) => status === 'success' ? 'online' : (status === 'failed' ? 'offline' : 'untested')
+
+const isDeleteMatch = computed(() => {
+  const target = deleteTarget.value?.name || ''
+  return deleteConfirmInput.value.trim().toLowerCase() === target.trim().toLowerCase() && target.length > 0
+})
 
 const closeTransientUi = () => {
   isAddDialogOpen.value = false
@@ -82,88 +154,86 @@ const stopAutoRefresh = () => {
   }
 }
 
+const queryListData = async (shouldSyncRoute = true) => {
+  if (shouldSyncRoute) await syncRouteQuery()
+  state.loading = true
+  state.error = ''
+  try {
+    const params: Record<string, unknown> = {
+      page: state.currPage,
+      page_size: state.pageSize
+    }
+    if (state.search.trim()) params.name = state.search.trim()
+    if (selectedType.value !== 'all') params.type = selectedType.value
+    if (selectedStatus.value === STATUS_UNTESTED) params.status = 'untested'
+    else if (selectedStatus.value !== 'all') params.status = selectedStatus.value
+    const { startTime, endTime } = pickDateRangeQuery(route.query as Record<string, unknown>)
+    if (startTime) params.start_time = startTime
+    if (endTime) params.end_time = endTime
+
+    const res = await mqApi.list(params)
+    if (res?.data?.code === 200) {
+      state.tableData = res.data.data?.list || []
+      state.total = res.data.data?.total || 0
+      state.stale = false
+      return
+    }
+    state.error = res?.data?.msg || '获取数据源列表失败'
+    state.stale = state.tableData.length > 0
+    notifyError(state.error)
+  } catch (error) {
+    state.error = '获取数据源列表时发生错误，请检查网络后重试'
+    state.stale = state.tableData.length > 0
+    notifyError('获取数据源列表时发生错误')
+  } finally {
+    state.loading = false
+  }
+}
+
 const setupAutoRefreshByPolicy = async () => {
   stopAutoRefresh()
   try {
-    const rsp = await request.get('/settings/getsetting', {
-      params: { section: 'mq_status_policy' }
-    })
+    const rsp = await settingsApi.get('mq_status_policy')
     const data = rsp?.data?.data || {}
     const enabled = data.enabled === 'true'
     const intervalSeconds = Number(data.interval_seconds || 300)
-    if (!enabled || Number.isNaN(intervalSeconds) || intervalSeconds < 10) {
-      return
-    }
+    if (!enabled || Number.isNaN(intervalSeconds) || intervalSeconds < 10) return
     autoRefreshTimer = window.setInterval(() => {
-      queryListDataWithStatus(false)
+      queryListData(false)
     }, intervalSeconds * 1000)
-  } catch {
-    // 忽略策略获取异常，保持手动刷新
-  }
+  } catch {}
 }
 
-// 总页数
-const totalPages = computed(() => Math.ceil(state.total / state.pageSize))
-
-const parsePositiveNumber = (value: unknown, fallback: number) => {
-  const n = Number(value)
-  if (!Number.isFinite(n) || n <= 0) return fallback
-  return Math.floor(n)
+const filterFunc = async () => {
+  state.currPage = 1
+  await queryListData()
 }
 
-const buildRouteQuery = () => {
-  const nextQuery: Record<string, string> = {
-    page: String(state.currPage),
-    page_size: String(state.pageSize),
-  }
-  const name = state.search.trim()
-  if (name) nextQuery.name = name
-  if (selectedType.value && selectedType.value !== 'all') nextQuery.type = selectedType.value
-  if (selectedStatus.value && selectedStatus.value !== 'all') nextQuery.status = selectedStatus.value
-  appendDateRangeQuery(nextQuery, route.query as Record<string, unknown>)
-  return nextQuery
+const resetFilters = async () => {
+  state.search = ''
+  selectedType.value = 'all'
+  selectedStatus.value = 'all'
+  state.currPage = 1
+  await queryListData()
 }
 
-const syncRouteQuery = async () => {
-  await router.replace({ path: route.path, query: buildRouteQuery() })
+const handlePageChange = async ({ page, pageSize }: { page: number; pageSize: number }) => {
+  state.currPage = page
+  state.pageSize = pageSize
+  await queryListData()
 }
 
-// 获取队列类型文本
-const getTypeText = (type: string) => {
-  const typeMap: Record<string, string> = {
-    rocketmq: 'RocketMQ',
-    kafka: 'Kafka',
-    rabbitmq: 'RabbitMQ'
-  }
-  return typeMap[type] || type
-}
-
-// 获取状态文本（仅两态：在线/离线）
-const getStatusText = (status: string) => {
-  return status === 'success' ? '在线' : '离线'
-}
-
-// 获取状态样式（在线:浅绿，离线:灰底）
-const getStatusClass = (status: string) => {
-  return status === 'success'
-    ? 'bg-green-100 text-green-800 border-green-200'
-    : 'bg-muted text-muted-foreground border-[var(--line-weak)]'
-}
-
-// 打开编辑对话框
 const openEditDialog = (item: MQSourceItem) => {
   editData.value = { ...item }
   isEditDialogOpen.value = true
 }
 
-// 打开测试对话框
 const openTestDialog = (item: MQSourceItem) => {
   editData.value = { ...item }
   testResult.value = null
   isTestDialogOpen.value = true
 }
 
-// 打开删除确认
 const openDeleteConfirm = (item: MQSourceItem) => {
   deleteTarget.value = item
   deleteConfirmInput.value = ''
@@ -176,151 +246,72 @@ const closeDeleteConfirm = () => {
   deleteTarget.value = null
 }
 
-const isDeleteMatch = computed(() => {
-  const target = deleteTarget.value?.name || ''
-  return deleteConfirmInput.value.trim().toLowerCase() === target.trim().toLowerCase() && target.length > 0
-})
-
-const showDeleteError = computed(() => {
-  return deleteConfirmInput.value.length > 0 && !isDeleteMatch.value
-})
-
-// 查询数据
-const queryListData = async (page: number, pageSize: number, name: string, type: string, status: string) => {
-  try {
-    const params: any = {
-      page,
-      page_size: pageSize,
-    }
-    if (name) params.name = name
-    if (type && type !== 'all') params.type = type
-    if (status === STATUS_UNTESTED) {
-      params.status = 'untested'
-    } else if (status && status !== 'all') {
-      params.status = status
-    }
-    const { startTime, endTime } = pickDateRangeQuery(route.query as Record<string, unknown>)
-    if (startTime) params.start_time = startTime
-    if (endTime) params.end_time = endTime
-
-    const res = await request.get('/mq-sources/list', { params })
-    if (res.data.code === 200) {
-      state.tableData = res.data.data.list || []
-      state.total = res.data.data.total || 0
-    } else {
-      // 只有非 200 状态码才显示错误
-      state.tableData = []
-      state.total = 0
-    }
-  } catch (error) {
-    // 网络错误时静默处理，显示空列表
-    state.tableData = []
-    state.total = 0
-  }
-}
-
-const queryListDataWithStatus = async (shouldSyncRoute = true) => {
-  if (shouldSyncRoute) {
-    await syncRouteQuery()
-  }
-  await queryListData(state.currPage, state.pageSize, state.search, selectedType.value, selectedStatus.value)
-}
-
-// 分页
-const changePage = async (page: number) => {
-  if (page >= 1 && page <= totalPages.value) {
-    state.currPage = page
-    await queryListDataWithStatus()
-  }
-}
-
-const handlePageSizeChange = async (size: number) => {
-  if (size <= 0) return
-  state.pageSize = size
-  state.currPage = 1
-  await queryListDataWithStatus()
-}
-
-// 过滤
-const filterFunc = async () => {
-  state.currPage = 1
-  await queryListDataWithStatus()
-}
-
-const filterByType = async (value: any) => {
-  if (value) {
-    selectedType.value = String(value)
-    state.currPage = 1
-    await queryListDataWithStatus()
-  }
-}
-
-const filterByStatus = async (value: any) => {
-  if (value) {
-    selectedStatus.value = String(value)
-    state.currPage = 1
-    await queryListDataWithStatus()
-  }
-}
-
-// 测试连接
 const handleTestConnection = async () => {
   if (!editData.value) return
-  
   try {
-    const res = await request.post(`/mq-sources/${editData.value.id}/test`)
-    if (res.data.code === 200) {
+    const res = await mqApi.test(editData.value.id)
+    if (res?.data?.code === 200) {
       testResult.value = res.data.data
-      if (testResult.value?.success) {
-        toast.success('连接测试成功')
-      } else {
-        toast.error(testResult.value?.error || '连接测试失败')
-      }
-      // 刷新列表
-      await queryListDataWithStatus()
+      if (testResult.value?.success) notifySuccess('连接测试成功')
+      else notifyError(testResult.value?.error || '连接测试失败')
+      await queryListData(false)
+      return
     }
+    notifyError(res?.data?.msg || '连接测试失败')
   } catch (error) {
-    toast.error('连接测试失败')
+    notifyError('连接测试失败')
     testResult.value = { success: false, error: '网络错误' }
   }
 }
 
-// 删除
 const handleDelete = async () => {
   if (!deleteTarget.value) return
-
   try {
-    const res = await request.post(`/mq-sources/${deleteTarget.value.id}/delete`)
-    if (res.data.code === 200) {
-      toast.success('删除成功')
+    const res = await mqApi.remove(deleteTarget.value.id)
+    if (res?.data?.code === 200) {
+      notifySuccess('删除成功')
       closeDeleteConfirm()
-      await queryListDataWithStatus()
+      await queryListData(false)
+      return
     }
+    notifyError(res?.data?.msg || '删除失败')
   } catch (error: any) {
-    toast.error(error.response?.data?.msg || '删除失败')
+    notifyError(error.response?.data?.msg || '删除失败')
   }
 }
 
-// 新增/编辑成功回调
-const handleSaveSuccess = () => {
+const handleSaveSuccess = async () => {
   isAddDialogOpen.value = false
   isEditDialogOpen.value = false
-  queryListDataWithStatus()
+  await queryListData(false)
+}
+
+const handleExport = async () => {
+  try {
+    const params: Record<string, unknown> = { page: state.currPage, page_size: state.pageSize }
+    if (state.search.trim()) params.name = state.search.trim()
+    if (selectedType.value !== 'all') params.type = selectedType.value
+    if (selectedStatus.value !== 'all') params.status = selectedStatus.value
+    const { startTime, endTime } = pickDateRangeQuery(route.query as Record<string, unknown>)
+    if (startTime) params.start_time = startTime
+    if (endTime) params.end_time = endTime
+    const rsp = await mqApi.export(params)
+    downloadBlob(rsp.data, `mq-sources-${new Date().toISOString().slice(0, 10)}.csv`)
+    notifySuccess('数据源导出成功')
+  } catch (error) {
+    notifyError('数据源导出失败')
+  }
 }
 
 onMounted(() => {
   state.search = route.query.name?.toString() || ''
   selectedType.value = route.query.type?.toString() || 'all'
   selectedStatus.value = route.query.status?.toString() || 'all'
-  if (!typeOptions.some((item) => item.value === selectedType.value)) {
-    selectedType.value = 'all'
-  }
-  if (!['all', 'success', 'failed', STATUS_UNTESTED].includes(selectedStatus.value)) {
-    selectedStatus.value = 'all'
-  }
+  if (!typeOptions.some((item) => item.value === selectedType.value)) selectedType.value = 'all'
+  if (!statusOptions.some((item) => item.value === selectedStatus.value)) selectedStatus.value = 'all'
   state.currPage = parsePositiveNumber(route.query.page, 1)
   state.pageSize = parsePositiveNumber(route.query.page_size, state.pageSize)
-  queryListDataWithStatus(false)
+  queryListData(false)
   setupAutoRefreshByPolicy()
 })
 
@@ -336,203 +327,113 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="space-y-2">
-    <div class="toolbar">
-      <div class="search-group">
-        <Input
-          v-model="state.search"
-          placeholder="搜索数据源名称..."
-          class="search-input"
-          @keyup.enter="filterFunc"
-        />
-        <Select :model-value="selectedType" @update:model-value="filterByType">
-          <SelectTrigger class="filter-select w-full">
-            <SelectValue placeholder="队列类型" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem v-for="opt in typeOptions" :key="opt.value" :value="opt.value">
-                {{ opt.label }}
-              </SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <Select :model-value="selectedStatus" @update:model-value="filterByStatus">
-          <SelectTrigger class="filter-select w-full">
-            <SelectValue placeholder="状态" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value="all">全部状态</SelectItem>
-              <SelectItem value="success">在线</SelectItem>
-              <SelectItem value="failed">离线</SelectItem>
-              <SelectItem :value="STATUS_UNTESTED">未测试</SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <Button variant="outline" @click="filterFunc">查询</Button>
+  <div class="space-y-4">
+    <el-card shadow="never">
+      <div class="page-toolbar">
+        <el-input v-model="state.search" clearable :placeholder="messages.searchPlaceholder" class="w-full md:!w-[260px]" @keyup.enter="filterFunc">
+          <template #prefix><Search /></template>
+        </el-input>
+        <el-select v-model="selectedType" class="w-full md:!w-[160px]" @change="filterFunc">
+          <el-option v-for="opt in typeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+        </el-select>
+        <el-select v-model="selectedStatus" class="w-full md:!w-[150px]" @change="filterFunc">
+          <el-option v-for="opt in statusOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+        </el-select>
+        <el-button :icon="Search" type="primary" @click="filterFunc">{{ messages.search }}</el-button>
+        <el-button :icon="Refresh" @click="resetFilters">{{ messages.reset }}</el-button>
+        <div class="flex-1" />
+        <el-button :icon="Download" @click="handleExport">{{ messages.export }}</el-button>
+        <el-button v-permission="'data:mq-source:add'" :icon="Plus" type="primary" @click="isAddDialogOpen = true">{{ messages.add }}</el-button>
       </div>
-      <Button class="primary-btn" v-permission="'data:mq-source:add'" @click="isAddDialogOpen = true">新增数据源</Button>
-    </div>
+    </el-card>
 
-    <div class="rounded border weak-divider overflow-x-auto">
-      <Table class="data-table border-collapse">
-        <TableHeader>
-          <TableRow>
-            <TableHead class="w-[80px] text-center">序号</TableHead>
-            <TableHead class="text-center">ID</TableHead>
-            <TableHead class="text-center">队列名称</TableHead>
-            <TableHead class="w-[120px] text-center">队列类型</TableHead>
-            <TableHead class="text-center">队列地址</TableHead>
-            <TableHead class="w-[120px] text-center">外部绑定</TableHead>
-            <TableHead class="w-[120px] text-center">状态</TableHead>
-            <TableHead class="w-[120px] text-center">最后测试时间</TableHead>
-            <TableHead class="w-[240px] text-center">操作</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow v-for="(item, index) in state.tableData" :key="item.id">
-            <TableCell class="font-medium">{{ (state.currPage - 1) * state.pageSize + index + 1 }}</TableCell>
-            <TableCell class="font-mono text-sm">{{ item.id }}</TableCell>
-            <TableCell class="font-medium">{{ item.name }}</TableCell>
-            <TableCell>
-              <Badge variant="outline">{{ getTypeText(item.type) }}</Badge>
-            </TableCell>
-            <TableCell class="font-mono text-sm max-w-[300px] truncate" :title="item.namesrv_addr">
-              {{ item.namesrv_addr }}
-            </TableCell>
-            <TableCell>
-              <Badge variant="secondary">{{ item.binding_count || 0 }} 个订阅</Badge>
-            </TableCell>
-            <TableCell>
-              <Badge variant="outline" class="text-xs font-medium" :class="getStatusClass(item.last_test_status)">
-                {{ getStatusText(item.last_test_status) }}
-              </Badge>
-            </TableCell>
-            <TableCell class="text-sm text-muted-foreground">
-              {{ item.last_test_time || '-' }}
-            </TableCell>
-            <TableCell class="text-right whitespace-nowrap">
-              <div class="inline-flex items-center justify-end gap-2">
-                <Button
-                v-permission="'data:mq-source:test'"
-                variant="outline"
-                size="sm"
-                class="min-w-[76px]"
-                @click="openTestDialog(item)"
-              >
-                测试连接
-              </Button>
-              <Button
-                v-permission="'data:mq-source:edit'"
-                variant="outline"
-                size="sm"
-                class="min-w-[64px]"
-                @click="openEditDialog(item)"
-              >
-                编辑
-              </Button>
-              <Button
-                v-permission="'data:mq-source:delete'"
-                variant="outline"
-                size="sm"
-                class="min-w-[64px] text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-                @click="openDeleteConfirm(item)"
-              >
-                删除
-              </Button>
-              </div>
-            </TableCell>
-          </TableRow>
-          <TableRow v-if="state.tableData.length === 0">
-            <TableCell :colspan="9">
-              <EmptyTableState title="暂无数据源" description="还没有配置任何消息队列数据源" />
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-    </div>
+    <el-card shadow="never" body-class="!p-0" :class="tableToolbar.focused ? 'app-table-focused-card' : ''">
+      <AppTableToolbar
+        :title="messages.title"
+        :columns="toolbarColumns"
+        v-model:visible-columns="tableToolbar.visibleColumns"
+        v-model:focused="tableToolbar.focused"
+        :refreshing="tableToolbar.refreshing || state.loading"
+        @refresh="refreshTable"
+      >
+        <template #summary>
+          <span class="text-xs text-muted-foreground">{{ messages.totalPrefix }}{{ state.total }}{{ messages.itemUnit }}</span>
+        </template>
+      </AppTableToolbar>
+      <AppTable :data="state.tableData" :columns="visibleColumns" :loading="state.loading" :error="state.error" :stale="state.stale" :empty-text="messages.empty" @retry="queryListData">
+        <template #index="{ index }">{{ (state.currPage - 1) * state.pageSize + index + 1 }}</template>
+        <template #name="{ row }"><AppTruncate :text="row.name" :title="messages.queueName" /></template>
+        <template #type="{ row }"><el-tag effect="plain">{{ getTypeText(row.type as string) }}</el-tag></template>
+        <template #namesrv_addr="{ row }"><AppTruncate :text="row.namesrv_addr" :title="messages.queueAddress" /></template>
+        <template #binding_count="{ row }"><el-tag type="info" effect="plain">{{ row.binding_count || 0 }}{{ messages.subscriptionUnit }}</el-tag></template>
+        <template #last_test_status="{ row }"><AppStatusTag :status="normalizedStatus(row.last_test_status as string)" /></template>
+        <template #last_test_time="{ row }">{{ row.last_test_time || '-' }}</template>
+        <template #actions="{ row }">
+          <AppRowActions :actions="[
+            { key: 'edit', label: messages.edit, kind: 'write', permission: 'data:mq-source:edit', onClick: () => openEditDialog(row as MQSourceItem) },
+            { key: 'delete', label: messages.delete, kind: 'write', permission: 'data:mq-source:delete', danger: true, onClick: () => openDeleteConfirm(row as MQSourceItem) },
+            { key: 'test', label: messages.test, kind: 'write', permission: 'data:mq-source:test', onClick: () => openTestDialog(row as MQSourceItem) }
+          ]" />
+        </template>
+        <template #empty>
+          <AppEmptyState :description="messages.empty" />
+        </template>
+      </AppTable>
+      <div class="px-4">
+        <AppPagination v-model:current-page="state.currPage" v-model:page-size="state.pageSize" :total="state.total" @change="handlePageChange" />
+      </div>
+    </el-card>
 
-    <div class="pagination">
-      <Pagination
-        :current-page="state.currPage"
-        :total-pages="totalPages"
-        :page-size="state.pageSize"
-        :total="state.total"
-        @change-page="changePage"
-        @change-page-size="handlePageSizeChange"
-      />
-    </div>
+    <AppFormDrawer v-model="isAddDialogOpen" :title="messages.add" size="640px" body-mode="managed" :show-footer="false">
+      <MQSourceForm @success="handleSaveSuccess" />
+    </AppFormDrawer>
 
-    <!-- 新增对话框 -->
-    <Dialog v-model:open="isAddDialogOpen">
-      <DialogContent class="sm:max-w-[600px]">
-        <DialogHeader>
-          <DialogTitle>新增数据源</DialogTitle>
-        </DialogHeader>
-        <MQSourceForm @success="handleSaveSuccess" />
-      </DialogContent>
-    </Dialog>
+    <AppFormDrawer v-model="isEditDialogOpen" :title="messages.editTitle" size="640px" body-mode="managed" :show-footer="false">
+      <MQSourceForm v-if="editData" :data="editData" @success="handleSaveSuccess" />
+    </AppFormDrawer>
 
-    <!-- 编辑对话框 -->
-    <Dialog v-model:open="isEditDialogOpen">
-      <DialogContent class="sm:max-w-[600px]">
-        <DialogHeader>
-          <DialogTitle>编辑数据源</DialogTitle>
-        </DialogHeader>
-        <MQSourceForm v-if="editData" :data="editData" @success="handleSaveSuccess" />
-      </DialogContent>
-    </Dialog>
-
-    <!-- 测试连接对话框 -->
-    <Dialog v-model:open="isTestDialogOpen">
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>测试连接 - {{ editData?.name }}</DialogTitle>
-        </DialogHeader>
-        <div class="space-y-4">
-          <div class="text-sm text-muted-foreground">
-            正在测试连接到: <code class="bg-muted px-1 py-0.5 rounded">{{ editData?.namesrv_addr }}</code>
-          </div>
-          <Button @click="handleTestConnection" :disabled="!editData">
-            开始测试
-          </Button>
-          <div v-if="testResult" class="p-3 rounded-md" :class="testResult.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'">
-            {{ testResult.success ? '✅ ' + (testResult.message || '连接成功') : '❌ ' + (testResult.error || '连接失败') }}
-          </div>
+    <el-dialog v-model="isTestDialogOpen" :title="`${messages.testTitlePrefix}${editData?.name || ''}`" width="min(520px, calc(100vw - 24px))" class="app-nested-dialog" append-to-body>
+      <div class="space-y-4">
+        <div class="text-sm text-muted-foreground">
+          {{ messages.testingAddress }}<code class="break-all rounded bg-muted px-1 py-0.5">{{ editData?.namesrv_addr }}</code>
         </div>
-      </DialogContent>
-    </Dialog>
+        <el-alert v-if="testResult" :type="testResult.success ? 'success' : 'error'" :title="testResult.success ? (testResult.message || messages.connectionSucceeded) : (testResult.error || messages.connectionFailed)" show-icon :closable="false" />
+        <p v-else>{{ messages.testHelp }}</p>
+      </div>
+      <template #footer>
+        <el-button @click="isTestDialogOpen = false">{{ messages.close }}</el-button>
+        <el-button type="primary" :disabled="!editData" @click="handleTestConnection">{{ messages.startTest }}</el-button>
+      </template>
+    </el-dialog>
 
-    <!-- 删除确认对话框 -->
-    <Dialog v-model:open="isDeleteConfirmOpen">
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>确认删除</DialogTitle>
-        </DialogHeader>
-        <div class="space-y-4">
-          <p class="text-sm text-muted-foreground">
-            请输入数据源名称 <strong>{{ deleteTarget?.name }}</strong> 以确认删除：
-          </p>
-          <Input
-            v-model="deleteConfirmInput"
-            placeholder="输入数据源名称"
-          />
-          <p v-if="showDeleteError" class="text-sm text-destructive">
-            输入的名称不匹配
-          </p>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" @click="closeDeleteConfirm">取消</Button>
-          <Button
-            variant="destructive"
-            :disabled="!isDeleteMatch"
-            @click="handleDelete"
-          >
-            删除
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <el-dialog v-model="isDeleteConfirmOpen" :title="messages.confirmDelete" width="min(420px, calc(100vw - 24px))" class="app-nested-dialog" append-to-body @closed="closeDeleteConfirm">
+      <div class="space-y-2">
+        <p class="text-sm text-muted-foreground">{{ messages.confirmNamePrefix }}<strong>{{ deleteTarget?.name }}</strong>{{ messages.confirmNameSuffix }}</p>
+        <el-input v-model="deleteConfirmInput" :placeholder="messages.nameInputPlaceholder" />
+        <p v-if="deleteConfirmInput && !isDeleteMatch" class="text-sm text-red-500">{{ messages.nameMismatch }}</p>
+      </div>
+      <template #footer>
+        <el-button @click="closeDeleteConfirm">{{ messages.cancel }}</el-button>
+        <el-button type="danger" :disabled="!isDeleteMatch" @click="handleDelete">{{ messages.delete }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.mq-test-dialog { display: grid; gap: 12px; }
+.mq-test-identity, .mq-test-target, .mq-test-result { overflow: hidden; border: 1px solid var(--app-overlay-border); border-radius: 9px; background: var(--app-overlay-surface); }
+.mq-test-identity { display: flex; align-items: center; gap: 12px; padding: 14px; }
+.mq-test-mark { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 8px; background: color-mix(in srgb, var(--brand-500) 10%, transparent); color: var(--brand-700); font: 800 10px monospace; }
+.mq-test-identity h3 { margin: 0; font-size: 14px; }
+.mq-test-identity p, .mq-test-result p { margin: 3px 0 0; color: var(--admin-text-muted); font-size: 11px; }
+.mq-test-target header, .mq-test-result header { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; border-bottom: 1px solid var(--app-overlay-border); }
+.mq-test-target h4, .mq-test-result h4 { margin: 0; font-size: 12px; }
+.mq-test-target header span, .mq-test-result header span { color: var(--admin-text-muted); font-size: 10px; }
+.mq-test-target dl { margin: 0; }
+.mq-test-target dl > div { display: grid; grid-template-columns: 100px minmax(0, 1fr); padding: 9px 12px; border-top: 1px solid var(--app-overlay-border); }
+.mq-test-target dl > div:first-child { border-top: 0; }
+.mq-test-target dt { color: var(--admin-text-muted); font-size: 11px; }
+.mq-test-target dd { margin: 0; font-size: 11px; overflow-wrap: anywhere; }
+.mq-test-result > :not(header) { margin: 12px; }
+</style>

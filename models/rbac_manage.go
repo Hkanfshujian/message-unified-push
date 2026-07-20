@@ -7,6 +7,9 @@ import (
 	"gorm.io/gorm"
 )
 
+// Relationship rows are owned by their RBAC aggregate and are archived atomically
+// with the parent record.
+
 func GetRoleByID(id uint) (*RbacRole, error) {
 	var role RbacRole
 	if err := db.First(&role, id).Error; err != nil {
@@ -60,18 +63,9 @@ func EditRole(id uint, data map[string]interface{}) error {
 	return db.Model(&RbacRole{}).Where("id = ?", id).Updates(data).Error
 }
 
-func DeleteRoleByID(id uint) error {
-	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("role_id = ?", id).Delete(&RbacRolePermission{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("role_id = ?", id).Delete(&RbacUserRole{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("role_id = ?", id).Delete(&RbacGroupRole{}).Error; err != nil {
-			return err
-		}
-		return tx.Delete(&RbacRole{}, id).Error
+func ArchiveRoleByID(id uint) error {
+	return WithTransaction(func(tx *gorm.DB) error {
+		return archiveRole(tx, id)
 	})
 }
 
@@ -134,12 +128,9 @@ func EditPermission(id uint, data map[string]interface{}) error {
 	return db.Model(&RbacPermission{}).Where("id = ?", id).Updates(data).Error
 }
 
-func DeletePermissionByID(id uint) error {
-	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("permission_id = ?", id).Delete(&RbacRolePermission{}).Error; err != nil {
-			return err
-		}
-		return tx.Delete(&RbacPermission{}, id).Error
+func ArchivePermissionByID(id uint) error {
+	return WithTransaction(func(tx *gorm.DB) error {
+		return archivePermission(tx, id)
 	})
 }
 
@@ -196,15 +187,9 @@ func EditUserGroup(id uint, data map[string]interface{}) error {
 	return db.Model(&RbacUserGroup{}).Where("id = ?", id).Updates(data).Error
 }
 
-func DeleteUserGroupByID(id uint) error {
-	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("group_id = ?", id).Delete(&RbacGroupRole{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("group_id = ?", id).Delete(&RbacUserGroupMember{}).Error; err != nil {
-			return err
-		}
-		return tx.Delete(&RbacUserGroup{}, id).Error
+func ArchiveUserGroupByID(id uint) error {
+	return WithTransaction(func(tx *gorm.DB) error {
+		return archiveUserGroup(tx, id)
 	})
 }
 

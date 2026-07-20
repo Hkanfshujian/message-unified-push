@@ -128,15 +128,15 @@ func InitRouter(f embed.FS) *gin.Engine {
 
 	// Casdoor 登录
 	router.GET("/auth/casdoor/login", api.CasdoorLogin)
-	router.GET("/auth/casdoor/callback", api.CasdoorCallback)
-	router.GET("/auth/casdoor/logout/callback", api.CasdoorLogoutCallback)
+	router.GET("/auth/casdoor/callback", api.CompleteCasdoorLogin)
+	router.GET("/auth/casdoor/logout/callback", api.CompleteCasdoorLogout)
 	router.GET("/auth/casdoor/status", api.CasdoorStatus)
 	apiV1 := router.Group("/api/v1")
 	apiV1.Use(middleware.JWT())
 	{
 		// sendways
 		apiV1.POST("/sendways/add", middleware.RequirePermission("message:sendways:add"), v1.AddMsgSendWay)
-		apiV1.POST("/sendways/delete", middleware.RequirePermission("message:sendways:delete"), v1.DeleteMsgSendWay)
+		apiV1.POST("/sendways/delete", middleware.RequirePermission("message:sendways:delete"), v1.ArchiveMsgSendWay)
 		apiV1.POST("/sendways/edit", middleware.RequirePermission("message:sendways:edit"), v1.EditSendWay)
 		apiV1.POST("/sendways/test", middleware.RequirePermission("message:sendways:test"), v1.TestSendWay)
 		apiV1.GET("/sendways/list", middleware.RequirePermission("message:sendways:view"), v1.GetMsgSendWayList)
@@ -145,6 +145,17 @@ func InitRouter(f embed.FS) *gin.Engine {
 
 		apiV1.GET("/sendlogs/list", middleware.RequirePermission("message:sendlogs:view"), v1.GetTaskSendLogsList)
 		apiV1.GET("/sendlogs/export", middleware.RequirePermission("message:sendlogs:view"), v1.ExportTaskSendLogsCsv)
+
+		apiV1.GET("/message-center/unread-count", middleware.RequireAnyPermission("message:center:view", "dashboard:view"), v1.GetMessageCenterUnreadCount)
+		apiV1.GET("/message-center/messages", middleware.RequireAnyPermission("message:center:view", "dashboard:view"), v1.GetMessageCenterMessages)
+		apiV1.POST("/message-center/messages/read", middleware.RequireAnyPermission("message:center:read", "message:center:view", "dashboard:view"), v1.MarkMessageCenterMessageRead)
+		apiV1.POST("/message-center/messages/read-all", middleware.RequireAnyPermission("message:center:read", "message:center:view", "dashboard:view"), v1.MarkAllMessageCenterMessagesRead)
+		apiV1.POST("/message-center/messages/delete", middleware.RequireAnyPermission("message:center:delete", "message:center:view", "dashboard:view"), v1.DeleteMessageCenterMessage)
+		apiV1.GET("/message-center/sync", middleware.RequireAnyPermission("message:center:view", "dashboard:view"), v1.SyncMessageCenter)
+		apiV1.GET("/system-messages/list", middleware.RequirePermission("message:system:view"), v1.GetSystemMessages)
+		apiV1.POST("/system-messages/add", middleware.RequirePermission("message:system:add"), v1.AddSystemMessage)
+		apiV1.POST("/system-messages/edit", middleware.RequirePermission("message:system:edit"), v1.EditSystemMessage)
+		apiV1.POST("/system-messages/delete", middleware.RequirePermission("message:system:delete"), v1.DeleteSystemMessage)
 
 		// settings
 		apiV1.POST("/settings/setpasswd", middleware.RequirePermission("system:settings:edit"), v1.EditPasswd)
@@ -162,7 +173,7 @@ func InitRouter(f embed.FS) *gin.Engine {
 		apiV1.GET("/system/storage-config/local-files", middleware.RequirePermission("system:settings:view"), v1.GetSystemStorageLocalFiles)
 		apiV1.GET("/system/storage-config/s3-objects", middleware.RequirePermission("system:settings:view"), v1.GetSystemStorageS3Objects)
 		apiV1.POST("/system/storage-config/local-directories", middleware.RequirePermission("system:settings:edit"), v1.CreateSystemStorageLocalDirectory)
-		apiV1.POST("/system/storage-config/delete-file", middleware.RequirePermission("system:settings:edit"), v1.DeleteSystemStorageFile)
+		apiV1.POST("/system/storage-config/delete-file", middleware.RequirePermission("system:settings:edit"), v1.RemoveSystemStorageFile)
 		apiV1.POST("/system/storage-config/upload-file", middleware.RequirePermission("system:settings:edit"), v1.UploadSystemStorageFile)
 		apiV1.POST("/system/storage-config/test-local-upload", middleware.RequirePermission("system:settings:edit"), v1.UploadSystemStorageFile)
 		apiV1.POST("/system/storage-config", middleware.RequirePermission("system:settings:edit"), v1.UpdateSystemStorageConfig)
@@ -183,8 +194,10 @@ func InitRouter(f embed.FS) *gin.Engine {
 		apiV1.POST("/cronmessages/addone", middleware.RequirePermission("message:cron:add"), v1.AddCronMsgTask)
 		apiV1.GET("/cronmessages/list", middleware.RequirePermission("message:cron:view"), v1.GetCronMsgList)
 		apiV1.GET("/cronmessages/export", middleware.RequirePermission("message:cron:view"), v1.ExportCronMsgCsv)
-		apiV1.POST("/cronmessages/delete", middleware.RequirePermission("message:cron:delete"), v1.DeleteCronMsgTask)
+		apiV1.POST("/cronmessages/delete", middleware.RequirePermission("message:cron:delete"), v1.ArchiveCronMsgTask)
 		apiV1.POST("/cronmessages/edit", middleware.RequirePermission("message:cron:edit"), v1.EditCronMsgTask)
+		apiV1.POST("/cronmessages/start", middleware.RequirePermission("message:cron:start"), v1.StartCronMsgTask)
+		apiV1.POST("/cronmessages/stop", middleware.RequirePermission("message:cron:stop"), v1.StopCronMsgTask)
 		apiV1.POST("/cronmessages/sendnow", middleware.RequirePermission("message:cron:sendnow"), v1.SendNowCronMsg)
 
 		// messageTemplate
@@ -193,29 +206,29 @@ func InitRouter(f embed.FS) *gin.Engine {
 		apiV1.GET("/templates/get", middleware.RequirePermission("message:template:view"), v1.GetMessageTemplate)
 		apiV1.POST("/templates/add", middleware.RequirePermission("message:template:add"), v1.AddMessageTemplate)
 		apiV1.POST("/templates/edit", middleware.RequirePermission("message:template:edit"), v1.EditMessageTemplate)
-		apiV1.POST("/templates/delete", middleware.RequirePermission("message:template:delete"), v1.DeleteMessageTemplate)
+		apiV1.POST("/templates/delete", middleware.RequirePermission("message:template:delete"), v1.ArchiveMessageTemplate)
 		apiV1.POST("/templates/preview", middleware.RequirePermission("message:template:preview"), v1.PreviewMessageTemplate)
 
 		// messageTemplate instances
 		apiV1.GET("/templates/ins/get", middleware.RequireAnyPermission("message:template:view", "message:template:instance"), v1.GetTemplateWithIns)
 		apiV1.POST("/templates/ins/addone", middleware.RequirePermission("message:template:instance"), v1.AddTemplateIns)
-		apiV1.POST("/templates/ins/delete", middleware.RequirePermission("message:template:instance"), v1.DeleteTemplateIns)
+		apiV1.POST("/templates/ins/delete", middleware.RequirePermission("message:template:instance"), v1.ArchiveTemplateIns)
 		apiV1.POST("/templates/ins/update_enable", middleware.RequirePermission("message:template:instance"), v1.UpdateTemplateInsEnable)
 		apiV1.POST("/templates/ins/update_config", middleware.RequirePermission("message:template:instance"), v1.UpdateTemplateInsConfig)
 		apiV1.GET("/templates/relations", middleware.RequirePermission("message:template:view"), v1.GetTemplateRelations)
 
 		apiV1.GET("/rbac/me/permissions", v1.GetCurrentUserPermissions)
-		apiV1.GET("/rbac/roles", middleware.RequireAnyPermission("system:rbac:role", "system:rbac:group"), v1.GetRbacRoles)
+		apiV1.GET("/rbac/roles", middleware.RequireAnyPermission("system:rbac:role", "system:rbac:group", "message:system:target:view"), v1.GetRbacRoles)
 		apiV1.POST("/rbac/roles", middleware.RequirePermission("system:rbac:role"), v1.AddRbacRole)
 		apiV1.POST("/rbac/roles/edit", middleware.RequirePermission("system:rbac:role"), v1.EditRbacRole)
-		apiV1.POST("/rbac/roles/delete", middleware.RequirePermission("system:rbac:role"), v1.DeleteRbacRole)
+		apiV1.POST("/rbac/roles/delete", middleware.RequirePermission("system:rbac:role"), v1.ArchiveRbacRole)
 		apiV1.GET("/rbac/roles/permissions", middleware.RequirePermission("system:rbac:role"), v1.GetRolePermissionIDs)
 		apiV1.POST("/rbac/roles/assign-permissions", middleware.RequirePermission("system:rbac:role"), v1.AssignPermissionsToRole)
 
-		apiV1.GET("/rbac/groups", middleware.RequireAnyPermission("system:rbac:group", "system:rbac:role"), v1.GetRbacGroups)
+		apiV1.GET("/rbac/groups", middleware.RequireAnyPermission("system:rbac:group", "system:rbac:role", "message:system:target:view"), v1.GetRbacGroups)
 		apiV1.POST("/rbac/groups", middleware.RequirePermission("system:rbac:group"), v1.AddRbacGroup)
 		apiV1.POST("/rbac/groups/edit", middleware.RequirePermission("system:rbac:group"), v1.EditRbacGroup)
-		apiV1.POST("/rbac/groups/delete", middleware.RequirePermission("system:rbac:group"), v1.DeleteRbacGroup)
+		apiV1.POST("/rbac/groups/delete", middleware.RequirePermission("system:rbac:group"), v1.ArchiveRbacGroup)
 		apiV1.GET("/rbac/groups/roles", middleware.RequirePermission("system:rbac:group"), v1.GetGroupRoleIDs)
 		apiV1.GET("/rbac/groups/members", middleware.RequirePermission("system:rbac:group"), v1.GetGroupMemberIDs)
 		apiV1.POST("/rbac/groups/assign-roles", middleware.RequirePermission("system:rbac:group"), v1.AssignRolesToGroup)
@@ -226,10 +239,10 @@ func InitRouter(f embed.FS) *gin.Engine {
 		apiV1.POST("/rbac/permissions/edit", middleware.RequirePermission("system:rbac:permission"), v1.EditRbacPermission)
 
 		apiV1.GET("/rbac/users", middleware.RequireAnyPermission("system:rbac:role", "system:rbac:group"), v1.GetRbacUsers)
-		apiV1.GET("/rbac/users/manage", middleware.RequirePermission("system:rbac:user"), v1.GetManageUsers)
+		apiV1.GET("/rbac/users/manage", middleware.RequireAnyPermission("system:rbac:user", "message:system:target:view"), v1.GetManageUsers)
 		apiV1.POST("/rbac/users/manage", middleware.RequirePermission("system:rbac:user"), v1.AddManageUser)
 		apiV1.POST("/rbac/users/manage/edit", middleware.RequirePermission("system:rbac:user"), v1.EditManageUser)
-		apiV1.POST("/rbac/users/manage/delete", middleware.RequirePermission("system:rbac:user"), v1.DeleteManageUser)
+		apiV1.POST("/rbac/users/manage/delete", middleware.RequirePermission("system:rbac:user"), v1.ArchiveManageUser)
 		apiV1.GET("/rbac/users/role-ids", middleware.RequirePermission("system:rbac:role"), v1.GetUserRoleIDs)
 		apiV1.GET("/rbac/users/group-ids", middleware.RequirePermission("system:rbac:group"), v1.GetUserGroupIDs)
 		apiV1.POST("/rbac/users/assign-roles", middleware.RequirePermission("system:rbac:role"), v1.AssignRolesToUser)
@@ -242,7 +255,7 @@ func InitRouter(f embed.FS) *gin.Engine {
 		apiV1.GET("/mq-sources/:id", middleware.RequirePermission("data:mq-source:view"), mqSourceCtrl.GetMQSourceByID)
 		apiV1.POST("/mq-sources/add", middleware.RequirePermission("data:mq-source:add"), mqSourceCtrl.AddMQSource)
 		apiV1.POST("/mq-sources/:id/edit", middleware.RequirePermission("data:mq-source:edit"), mqSourceCtrl.EditMQSource)
-		apiV1.POST("/mq-sources/:id/delete", middleware.RequirePermission("data:mq-source:delete"), mqSourceCtrl.DeleteMQSource)
+		apiV1.POST("/mq-sources/:id/delete", middleware.RequirePermission("data:mq-source:delete"), mqSourceCtrl.ArchiveMQSource)
 		apiV1.POST("/mq-sources/:id/test", middleware.RequirePermission("data:mq-source:test"), mqSourceCtrl.TestMQSource)
 		apiV1.POST("/mq-sources/test-config", middleware.RequirePermission("data:mq-source:test"), mqSourceCtrl.TestMQSourceConfig)
 
@@ -254,7 +267,7 @@ func InitRouter(f embed.FS) *gin.Engine {
 		apiV1.POST("/subscriptions/add", middleware.RequirePermission("data:subscription:add"), subscriptionCtrl.AddSubscription)
 		apiV1.POST("/subscriptions/regex-test", middleware.RequireAnyPermission("data:subscription:add", "data:subscription:edit"), subscriptionCtrl.TestSubscriptionRegex)
 		apiV1.POST("/subscriptions/:id/edit", middleware.RequirePermission("data:subscription:edit"), subscriptionCtrl.EditSubscription)
-		apiV1.POST("/subscriptions/:id/delete", middleware.RequirePermission("data:subscription:delete"), subscriptionCtrl.DeleteSubscription)
+		apiV1.POST("/subscriptions/:id/delete", middleware.RequirePermission("data:subscription:delete"), subscriptionCtrl.ArchiveSubscription)
 		apiV1.POST("/subscriptions/:id/start", middleware.RequirePermission("data:subscription:start"), subscriptionCtrl.StartSubscription)
 		apiV1.POST("/subscriptions/:id/stop", middleware.RequirePermission("data:subscription:stop"), subscriptionCtrl.StopSubscription)
 

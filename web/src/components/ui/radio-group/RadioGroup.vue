@@ -1,24 +1,30 @@
 <script setup lang="ts">
-import type { RadioGroupRootEmits, RadioGroupRootProps } from "reka-ui"
 import type { HTMLAttributes } from "vue"
-import { reactiveOmit } from "@vueuse/core"
-import { RadioGroupRoot, useForwardPropsEmits } from "reka-ui"
 import { cn } from "@/lib/utils"
 
-const props = defineProps<RadioGroupRootProps & { class?: HTMLAttributes["class"] }>()
-const emits = defineEmits<RadioGroupRootEmits>()
+const props = defineProps<{
+  modelValue?: string
+  class?: HTMLAttributes["class"]
+}>()
+const emit = defineEmits<{
+  (e: 'update:modelValue', value: string): void
+}>()
 
-const delegatedProps = reactiveOmit(props, "class")
-
-const forwarded = useForwardPropsEmits(delegatedProps, emits)
+const updateModelValue = (event: Event) => {
+  const target = event.target as HTMLInputElement | null
+  if (target?.value) {
+    emit('update:modelValue', target.value)
+  }
+}
 </script>
 
 <template>
-  <RadioGroupRoot
+  <div
     data-slot="radio-group"
+    role="radiogroup"
     :class="cn('grid gap-3', props.class)"
-    v-bind="forwarded"
+    @change="updateModelValue"
   >
     <slot />
-  </RadioGroupRoot>
+  </div>
 </template>

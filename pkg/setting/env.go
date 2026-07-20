@@ -10,6 +10,13 @@ import (
 
 var optionValueMap = map[string]string{}
 
+const (
+	serverHTTPEnv           = "SERVER_HTTP_PORT"
+	databaseEndpointEnv     = "DATABASE_PORT"
+	defaultServerEndpoint   = 8081
+	defaultDatabaseEndpoint = 3306
+)
+
 func getEnvValue(keys ...string) (string, bool) {
 	for _, key := range keys {
 		value := os.Getenv(key)
@@ -49,25 +56,34 @@ func applyDurationSecondsEnv(target *time.Duration, keys ...string) {
 	}
 }
 
+func intEnvOrDefault(key string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		log.Printf("[ops-message-unified-push] invalid int env value for %s: %s", key, value)
+		return fallback
+	}
+	return parsed
+}
+
 func initDefaultSettings() {
-	AppSetting.JwtSecret = "ops-message-unified-push"
+	*AppSetting = App{}
+	*ServerSetting = Server{}
+	*DatabaseSetting = Database{}
+
 	AppSetting.RuntimeRootPath = "runtime/"
 	AppSetting.LogLevel = "INFO"
-	AppSetting.InitData = ""
 
 	ServerSetting.RunMode = "release"
-	ServerSetting.HttpPort = 8081
+	ServerSetting.HttpPort = intEnvOrDefault(serverHTTPEnv, defaultServerEndpoint)
 	ServerSetting.ReadTimeout = time.Duration(60)
 	ServerSetting.WriteTimeout = time.Duration(60)
-	ServerSetting.EmbedHtml = ""
-	ServerSetting.UrlPrefix = ""
 
 	DatabaseSetting.Type = "sqlite"
-	DatabaseSetting.User = ""
-	DatabaseSetting.Password = ""
-	DatabaseSetting.Host = ""
-	DatabaseSetting.Port = 3306
-	DatabaseSetting.Name = ""
+	DatabaseSetting.Port = intEnvOrDefault(databaseEndpointEnv, defaultDatabaseEndpoint)
 	DatabaseSetting.TablePrefix = "message_"
 	DatabaseSetting.SqlDebug = "disable"
 	DatabaseSetting.Ssl = "false"

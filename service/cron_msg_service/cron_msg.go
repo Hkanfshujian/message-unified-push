@@ -108,8 +108,8 @@ func (st *CronMsgService) getMaps() map[string]interface{} {
 	return maps
 }
 
-func (st *CronMsgService) Delete() error {
-	return models.DeleteCronMsg(st.ID)
+func (st *CronMsgService) Archive() error {
+	return models.ArchiveCronMsg(st.ID)
 }
 
 // GetCronNextTime 获取下次的执行时间

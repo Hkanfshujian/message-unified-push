@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -26,11 +27,15 @@ import (
 
 var storageIDPattern = regexp.MustCompile(`^\d{8}$`)
 
+// SoftDeleteModel is not applicable to storage-provider objects. User files
+// are moved into a provider-local recycle area before the active copy is removed;
+// only temporary connectivity artifacts are cleaned up immediately.
+
 // normalizeS3Endpoint 处理 S3 endpoint URL，返回纯主机名/IP和是否使用 SSL
 func normalizeS3Endpoint(endpoint string, useSSL bool) (string, bool) {
 	endpoint = strings.TrimSpace(endpoint)
 	secure := useSSL
-	
+
 	if strings.HasPrefix(endpoint, "https://") {
 		endpoint = strings.TrimPrefix(endpoint, "https://")
 		secure = true
@@ -38,7 +43,7 @@ func normalizeS3Endpoint(endpoint string, useSSL bool) (string, bool) {
 		endpoint = strings.TrimPrefix(endpoint, "http://")
 		secure = false
 	}
-	
+
 	endpoint = strings.TrimSuffix(endpoint, "/")
 	return endpoint, secure
 }
@@ -102,7 +107,7 @@ type LocalFileEntry struct {
 	PublicURL    string `json:"public_url"`
 }
 
-type DeleteSystemStorageFileReq struct {
+type RemoveSystemStorageFileReq struct {
 	ProfileID    string `json:"profile_id"`
 	ObjectKey    string `json:"object_key"`
 	RelativePath string `json:"relative_path"`
@@ -669,8 +674,8 @@ func buildLocalPublicURL(relative string) string {
 	return "/storage/" + normalized
 }
 
-func DeleteSystemStorageFile(c *gin.Context) {
-	var req DeleteSystemStorageFileReq
+func RemoveSystemStorageFile(c *gin.Context) {
+	var req RemoveSystemStorageFileReq
 	appG := app.Gin{C: c}
 	errCode, errMsg := app.BindJsonAndPlayValid(c, &req)
 	if errCode != e.SUCCESS {
@@ -711,13 +716,23 @@ func DeleteSystemStorageFile(c *gin.Context) {
 		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 18*time.Second)
 		defer cancel()
+		recycleKey := path.Join(basePrefix, ".recycle", time.Now().Format("20060102"), fmt.Sprintf("%d-%s", time.Now().UnixNano(), path.Base(objectKey)))
+		_, err = client.CopyObject(ctx,
+			minio.CopyDestOptions{Bucket: profile.S3Bucket, Object: recycleKey},
+			minio.CopySrcOptions{Bucket: profile.S3Bucket, Object: objectKey},
+		)
+		if err != nil {
+			appG.CResponse(http.StatusBadRequest, fmt.Sprintf("归档 S3 对象失败：%s", err.Error()), nil)
+			return
+		}
 		if err = client.RemoveObject(ctx, profile.S3Bucket, objectKey, minio.RemoveObjectOptions{}); err != nil {
 			appG.CResponse(http.StatusBadRequest, fmt.Sprintf("删除 S3 对象失败：%s", err.Error()), nil)
 			return
 		}
 		appG.CResponse(http.StatusOK, "删除成功", map[string]string{
-			"provider":   "s3",
-			"object_key": objectKey,
+			"provider":    "s3",
+			"object_key":  objectKey,
+			"recycle_key": recycleKey,
 		})
 		return
 	}
@@ -758,13 +773,22 @@ func DeleteSystemStorageFile(c *gin.Context) {
 		appG.CResponse(http.StatusBadRequest, "当前路径是目录，无法直接删除", nil)
 		return
 	}
-	if err = os.Remove(targetAbs); err != nil {
+	recycleDir := filepath.Join(rootAbs, ".recycle", time.Now().Format("20060102"))
+	if err = os.MkdirAll(recycleDir, 0755); err != nil {
+		appG.CResponse(http.StatusBadRequest, fmt.Sprintf("创建文件回收目录失败：%s", err.Error()), nil)
+		return
+	}
+	recycleName := fmt.Sprintf("%d-%s", time.Now().UnixNano(), filepath.Base(targetAbs))
+	recycleAbs := filepath.Join(recycleDir, recycleName)
+	if err = os.Rename(targetAbs, recycleAbs); err != nil {
 		appG.CResponse(http.StatusBadRequest, fmt.Sprintf("删除本地文件失败：%s", err.Error()), nil)
 		return
 	}
+	recycleRelative, _ := filepath.Rel(rootAbs, recycleAbs)
 	appG.CResponse(http.StatusOK, "删除成功", map[string]string{
 		"provider":      "local",
 		"relative_path": relativePath,
+		"recycle_path":  filepath.ToSlash(recycleRelative),
 	})
 }
 

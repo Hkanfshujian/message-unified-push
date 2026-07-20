@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { reactive, onMounted, computed } from 'vue'
-import { request } from '@/api/api'
-import { toast } from 'vue-sonner'
+import { settingsApi } from '@/api/settings'
+import { notifyError } from '@/util/uiFeedback'
 
 const state = reactive({
   version: '1.0.0',
@@ -13,7 +13,7 @@ const state = reactive({
     '渠道配置管理',
     '站点信息配置',
   ],
-  techStack: ['Golang','Vue 3', 'TypeScript', 'Vite', 'Tailwind CSS', 'Shadcn/ui'],
+  techStack: ['Golang', 'Vue 3', 'TypeScript', 'Vite', 'Element Plus', 'UnoCSS'],
   memoryUsage: '',
   uptime: ''
 })
@@ -22,7 +22,7 @@ const state = reactive({
 const getAboutConfig = async () => {
   try {
     const params = { params: { section: 'about' } }
-    const response = await request.get('/settings/getsetting', params)
+    const response = await settingsApi.get(params.params.section)
     if (response.data.code === 200) {
       const data = response.data.data
       if (data.version) state.version = data.version
@@ -30,7 +30,7 @@ const getAboutConfig = async () => {
       if (data.uptime) state.uptime = data.uptime
     }
   } catch (error) {
-    toast.error('获取关于信息失败')
+    notifyError('获取关于信息失败')
   }
 }
 
@@ -57,67 +57,49 @@ export default {
 <template>
   <div class="space-y-8">
     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-      <!-- 技术栈 + 功能特性 -->
-      <div class="space-y-6">
-        <div>
-          <h3 class="text-sm font-medium text-foreground mb-2">技术栈</h3>
+      <el-card shadow="never">
+        <div class="space-y-6">
+          <div>
+            <h3 class="text-sm font-medium text-foreground mb-2">技术栈</h3>
           <div class="flex flex-wrap gap-2">
-            <span
+            <el-tag
               v-for="tech in state.techStack"
               :key="tech"
-              class="inline-flex items-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 px-3 py-1 text-xs font-medium"
+              type="warning"
+              effect="light"
             >
               {{ tech }}
-            </span>
+            </el-tag>
           </div>
         </div>
 
         <div>
           <h3 class="text-sm font-medium text-foreground mb-2">功能特性</h3>
           <div class="flex flex-wrap gap-2">
-            <span
+            <el-tag
               v-for="feature in state.features"
               :key="feature"
-              class="inline-flex items-center rounded-full bg-muted text-muted-foreground px-3 py-1 text-xs"
+              type="info"
+              effect="plain"
             >
               {{ feature }}
-            </span>
+            </el-tag>
           </div>
         </div>
       </div>
+      </el-card>
 
-      <!-- 系统信息 -->
-      <div class="space-y-6">
-        <div>
-          <h3 class="text-sm font-medium text-foreground mb-2">系统信息</h3>
-          <dl class="space-y-2 text-sm">
-            <div class="flex justify-between">
-              <dt class="text-muted-foreground">系统版本</dt>
-              <dd class="text-foreground font-medium">
-                {{ state.version }}
-              </dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-muted-foreground">构建时间</dt>
-              <dd class="text-foreground">
-                {{ buildTime.includes('开发模式') ? buildTime : new Date(buildTime).toLocaleString('zh-CN') }}
-              </dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-muted-foreground">内存使用</dt>
-              <dd class="text-foreground">
-                {{ state.memoryUsage || '获取中...' }}
-              </dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-muted-foreground">运行时间</dt>
-              <dd class="text-foreground">
-                {{ state.uptime || '获取中...' }}
-              </dd>
-            </div>
-          </dl>
-        </div>
-      </div>
+      <el-card shadow="never">
+        <h3 class="text-sm font-medium text-foreground mb-4">系统信息</h3>
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="系统版本">{{ state.version }}</el-descriptions-item>
+          <el-descriptions-item label="构建时间">
+            {{ buildTime.includes('开发模式') ? buildTime : new Date(buildTime).toLocaleString('zh-CN') }}
+          </el-descriptions-item>
+          <el-descriptions-item label="内存使用">{{ state.memoryUsage || '获取中...' }}</el-descriptions-item>
+          <el-descriptions-item label="运行时间">{{ state.uptime || '获取中...' }}</el-descriptions-item>
+        </el-descriptions>
+      </el-card>
     </div>
   </div>
 </template>

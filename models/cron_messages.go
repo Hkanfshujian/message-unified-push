@@ -10,6 +10,7 @@ import (
 
 type CronMessages struct {
 	UUIDModel
+	SoftDeleteModel
 
 	Name       string `json:"name" gorm:"type:varchar(200) ;default:'';"`
 	TemplateID string `json:"template_id" gorm:"type:varchar(36) ;column:task_id;default:'';"`
@@ -21,9 +22,12 @@ type CronMessages struct {
 	Enable int    `json:"enable" gorm:"type:int ;default:1;"`
 }
 
-func GenerateMsgUniqueID() string {
-	newUUID := util.GenerateUniqueID()
-	return fmt.Sprintf("CM%s", newUUID)
+func GenerateMsgUniqueID() (string, error) {
+	newUUID, err := util.GenerateUniqueID()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("CM%s", newUUID), nil
 }
 
 func AddSendCronMsg(
@@ -34,7 +38,10 @@ func AddSendCronMsg(
 	url string,
 	createdBy string,
 ) (string, error) {
-	newUUID := GenerateMsgUniqueID()
+	newUUID, err := GenerateMsgUniqueID()
+	if err != nil {
+		return "", err
+	}
 	msg := CronMessages{
 		UUIDModel: UUIDModel{
 			ID:         newUUID,
@@ -121,8 +128,8 @@ func GetCronMessagesTotal(name string, maps interface{}, dateRange ...string) (i
 	return total, nil
 }
 
-func DeleteCronMsg(id string) error {
-	if err := db.Where("id = ?", id).Delete(&CronMessages{}).Error; err != nil {
+func ArchiveCronMsg(id string) error {
+	if err := db.Unscoped().Where("id = ?", id).Delete(&CronMessages{}).Error; err != nil {
 		return err
 	}
 	return nil
@@ -182,6 +189,7 @@ func GetCronMsgCountByTemplateIDs(templateIDs []string) (map[string]int64, error
 	var rows []row
 	err := db.Table(GetSchema(CronMessages{})).
 		Select("task_id, COUNT(*) as cnt").
+		Where("deleted_at IS NULL").
 		Where("task_id IN ?", templateIDs).
 		Group("task_id").
 		Scan(&rows).Error

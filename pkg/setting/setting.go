@@ -1,8 +1,11 @@
 package setting
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-ini/ini"
@@ -84,10 +87,23 @@ func Setup() {
 		loadConfigFromEnv()
 	}
 	applyEnvOverrides()
+	ensureJWTSecret()
 
 	ServerSetting.ReadTimeout = ServerSetting.ReadTimeout * time.Second
 	ServerSetting.WriteTimeout = ServerSetting.WriteTimeout * time.Second
 
+}
+
+func ensureJWTSecret() {
+	if strings.TrimSpace(AppSetting.JwtSecret) != "" {
+		return
+	}
+	secretBytes := make([]byte, 32)
+	if _, err := rand.Read(secretBytes); err != nil {
+		log.Fatalf("[ops-message-unified-push] generate runtime JWT secret: %v", err)
+	}
+	AppSetting.JwtSecret = base64.RawURLEncoding.EncodeToString(secretBytes)
+	log.Print("[ops-message-unified-push] JWT secret was not configured; generated an ephemeral runtime secret")
 }
 
 // mapTo map section

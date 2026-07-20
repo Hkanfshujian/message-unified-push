@@ -1,82 +1,77 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import SettingsSidebar from './SettingsSidebar.vue'
 import PasswordSettings from './PasswordSettings.vue'
 import CleanSettings from './CleanSettings.vue'
 import SiteSettings from './SiteSettings.vue'
+import AuthSettings from './AuthSettings.vue'
+import StorageSettings from './StorageSettings.vue'
+import MQStatusPolicySettings from './MQStatusPolicySettings.vue'
 import TokenToolSettings from './TokenToolSettings.vue'
 import AboutSettings from './AboutSettings.vue'
 import LoginLogs from './LoginLogs.vue'
 
-const activeTab = ref('password')
+const settingsSections = [
+  { id: 'password', title: '重置密码', description: '更改您的登录密码' },
+  { id: 'clean', title: '数据清理', description: '清理历史数据与日志' },
+  { id: 'loginlogs', title: '登录日志', description: '查看最近的登录记录' },
+  { id: 'site', title: '站点设置', description: '配置站点标题、描述、Logo、分页与主题等基础信息' },
+  { id: 'auth', title: '认证设置', description: '配置注册入口、默认用户组与 Casdoor 单点登录参数' },
+  { id: 'storage', title: '存储设置', description: '管理本地与 S3 存储配置、默认存储和文件浏览能力' },
+  { id: 'mqStatusPolicy', title: 'MQ 状态策略', description: '配置订阅状态检测、异常判定与恢复策略' },
+  { id: 'tokenTool', title: '加解密工具', description: '管理和测试 Token 编解码工具' },
+  { id: 'about', title: '站点关于', description: '查看当前站点的版本信息与说明' }
+] as const
+
+type SettingsSectionId = typeof settingsSections[number]['id']
+
 const router = useRouter()
+const route = useRoute()
 
-const activeTitle = computed(() => {
-  switch (activeTab.value) {
-    case 'password':
-      return '重置密码'
-    case 'clean':
-      return '数据清理'
-    case 'loginlogs':
-      return '登录日志'
-    case 'site':
-      return '站点设置'
-    case 'tokenTool':
-      return '加解密工具'
-    case 'about':
-      return '站点关于'
-    default:
-      return ''
-  }
-})
-
-const activeDescription = computed(() => {
-  switch (activeTab.value) {
-    case 'password':
-      return '更改您的登录密码'
-    case 'clean':
-      return '清理历史数据与日志'
-    case 'loginlogs':
-      return '查看最近的登录记录'
-    case 'site':
-      return '配置站点标题、描述等基础信息'
-    case 'tokenTool':
-      return '管理和测试 Token 编解码工具'
-    case 'about':
-      return '查看当前站点的版本信息与说明'
-    default:
-      return ''
-  }
-})
-
-const handleClose = () => {
-  router.back()
+const getTabFromQuery = (): SettingsSectionId => {
+  const rawTab = Array.isArray(route.query.tab) ? route.query.tab[0] : route.query.tab
+  return settingsSections.some(item => item.id === rawTab) ? rawTab as SettingsSectionId : 'password'
 }
+
+const activeTab = ref<SettingsSectionId>(getTabFromQuery())
+
+watch(
+  () => route.query.tab,
+  () => {
+    const nextTab = getTabFromQuery()
+    if (activeTab.value !== nextTab) {
+      activeTab.value = nextTab
+    }
+  }
+)
+
+watch(activeTab, tab => {
+  const currentTab = Array.isArray(route.query.tab) ? route.query.tab[0] : route.query.tab
+  if (currentTab === tab) return
+  router.replace({ query: { ...route.query, tab } })
+})
+
+const activeSection = computed(() => {
+  return settingsSections.find(item => item.id === activeTab.value) || settingsSections[0]
+})
+
+const handleTabChange = (tab: string) => {
+  if (settingsSections.some(item => item.id === tab)) {
+    activeTab.value = tab as SettingsSectionId
+  }
+}
+
 </script>
 
 <template>
-  <div class="p-6 w-full max-w-6xl mx-auto system-settings">
-    <!-- 顶部标题与关闭按钮 -->
-    <div class="flex items-center justify-between mb-4">
-      <h1 class="text-[18px] font-semibold text-foreground">
-        系统设置
-      </h1>
-      <button
-        type="button"
-        class="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-[var(--motion-fast)]"
-        @click="handleClose"
-        aria-label="关闭系统设置"
-      >
-        ×
-      </button>
-    </div>
-
-    <div class="flex flex-col lg:flex-row gap-6 min-h-[520px] h-full">
-      <div class="left-nav lg:flex-[1] lg:max-w-xs w-full">
+  <div class="p-6 w-full max-w-7xl mx-auto system-settings">
+    <el-card shadow="never" class="settings-shell-card">
+      <div class="flex flex-col lg:flex-row gap-6 min-h-[560px] h-full">
+        <div class="left-nav lg:w-[280px] w-full shrink-0">
         <SettingsSidebar
           :active-tab="activeTab"
-          @update:active-tab="activeTab = $event"
+          @update:active-tab="handleTabChange"
         />
       </div>
 
@@ -85,12 +80,12 @@ const handleClose = () => {
       >
         <transition name="settings-fade" mode="out-in">
           <div :key="activeTab" class="flex-1 flex flex-col gap-4">
-            <div v-if="activeTitle" class="space-y-1">
+            <div class="space-y-1">
               <h2 class="text-[16px] font-semibold text-foreground">
-                {{ activeTitle }}
+                {{ activeSection.title }}
               </h2>
               <p class="text-[12px] text-muted-foreground">
-                {{ activeDescription }}
+                {{ activeSection.description }}
               </p>
             </div>
 
@@ -98,6 +93,9 @@ const handleClose = () => {
               <PasswordSettings v-if="activeTab === 'password'" />
               <CleanSettings v-else-if="activeTab === 'clean'" />
               <SiteSettings v-else-if="activeTab === 'site'" />
+              <AuthSettings v-else-if="activeTab === 'auth'" />
+              <StorageSettings v-else-if="activeTab === 'storage'" />
+              <MQStatusPolicySettings v-else-if="activeTab === 'mqStatusPolicy'" />
               <TokenToolSettings v-else-if="activeTab === 'tokenTool'" />
               <LoginLogs v-else-if="activeTab === 'loginlogs'" />
               <AboutSettings v-else-if="activeTab === 'about'" />
@@ -106,10 +104,15 @@ const handleClose = () => {
         </transition>
       </div>
     </div>
+    </el-card>
   </div>
 </template>
 
 <style scoped>
+:deep(.settings-shell-card > .el-card__body) {
+  min-height: 620px;
+}
+
 .settings-fade-enter-active,
 .settings-fade-leave-active {
   transition: opacity var(--motion-fast) ease-out, transform var(--motion-fast) ease-out;

@@ -11,6 +11,7 @@ import (
 )
 
 type SendTasksLogs struct {
+	SoftDeleteModel
 	ID       int    `gorm:"primaryKey" json:"id" `
 	TaskID   string `json:"task_id" gorm:"type:varchar(12) ;default:'';index:task_id"`
 	Type     string `json:"type" gorm:"type:varchar(20) ;default:'task';comment:'类型：task-系统任务，template-接口调用，cron_message-定时消息'"`
@@ -50,7 +51,7 @@ func GetSendLogs(pageNum int, pageSize int, name string, taskId string, maps map
 	logt := GetSchema(SendTasksLogs{})
 
 	// 简化查询，只查询日志表
-	query := db.Table(logt)
+	query := db.Table(logt).Where(notDeleted(logt))
 
 	dayVal, ok := maps["day_created_on"]
 	if ok {
@@ -120,6 +121,7 @@ func fillTaskNamesForLogs(logs *[]LogsResult) {
 		templateT := GetSchema(Template{})
 		db.Table(templateT).
 			Select("id, name").
+			Where(notDeleted(templateT)).
 			Where("id IN ?", templateIDs).
 			Scan(&templates)
 		for _, template := range templates {
@@ -137,6 +139,7 @@ func fillTaskNamesForLogs(logs *[]LogsResult) {
 		cront := GetSchema(CronMessages{})
 		db.Table(cront).
 			Select("id, name").
+			Where(notDeleted(cront)).
 			Where("id IN ?", cronIds).
 			Scan(&cronMsgs)
 		for _, cronMsg := range cronMsgs {
@@ -167,7 +170,7 @@ func GetSendLogsTotal(name string, taskId string, maps map[string]interface{}) (
 	logt := GetSchema(SendTasksLogs{})
 
 	// 简化查询，只查询日志表
-	query := db.Table(logt)
+	query := db.Table(logt).Where(notDeleted(logt))
 
 	dayVal, ok := maps["day_created_on"]
 	if ok {
@@ -247,6 +250,7 @@ func normalizeCronLogs(logs *[]LogsResult) {
 	cront := GetSchema(CronMessages{})
 	db.Table(cront).
 		Select("id, name, task_id").
+		Where(notDeleted(cront)).
 		Where("task_id IN ?", templateIDs).
 		Scan(&cronMsgs)
 	templateNameMap := make(map[string]string)
@@ -302,7 +306,7 @@ func DeleteOutDateLogs(keepNum int) (int, error) {
 	}
 
 	// 2. 删除ID小于临界值的记录
-	deleteResult := db.Where("id < ?", threshold.ID).Delete(&SendTasksLogs{})
+	deleteResult := db.Unscoped().Where("id < ?", threshold.ID).Delete(&SendTasksLogs{})
 	if deleteResult.Error != nil {
 		return affectedRows, deleteResult.Error
 	}
@@ -369,12 +373,13 @@ func GetStatisticData() (StatisticData, error) {
 	COUNT(*) AS today_total_num,
 	SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) AS today_succ_num,
 	SUM(CASE WHEN status != 1 or status is null THEN 1 ELSE 0 END) AS today_failed_num`).
+		Where(notDeleted(logt)).
 		Where("DATE(created_on) = ?", currDay)
 
 	query.Take(&statistic)
 
 	// 	全部消息统计数据
-	totalQuery := db.Table(logt).Select(`COUNT(*) AS message_total_num`)
+	totalQuery := db.Table(logt).Select(`COUNT(*) AS message_total_num`).Where(notDeleted(logt))
 	totalQuery.Take(&statistic)
 
 	// 最近30天数据
@@ -391,6 +396,7 @@ func GetStatisticData() (StatisticData, error) {
 	SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) AS day_succ_num,
 	SUM(CASE WHEN status != 1 or status is null THEN 1 ELSE 0 END) AS day_failed_num,
 	COUNT(*) AS num`).
+		Where(notDeleted(logt)).
 		Where(fmt.Sprintf(" created_on >= '%s' and created_on <= '%s' ", pastDate, nextDate)).
 		Group("day").
 		Order("day")
@@ -402,6 +408,8 @@ func GetStatisticData() (StatisticData, error) {
 		Table(inst).
 		Select(fmt.Sprintf("%s.name as way_name, count(%s.id) as count_num", wayst, wayst)).
 		Joins(fmt.Sprintf("JOIN %s ON %s.way_id = %s.id", wayst, inst, wayst)).
+		Where(notDeleted(inst)).
+		Where(notDeleted(wayst)).
 		Group(fmt.Sprintf("%s.id", wayst)).
 		Scan(&wayCateData)
 
@@ -434,8 +442,15 @@ func GetBasicStatisticData() (BasicStatisticData, error) {
 	return statistic, nil
 }
 
+func normalizeStatisticDay(value string) string {
+	if len(value) >= 10 {
+		return value[:10]
+	}
+	return value
+}
+
 // GetTrendStatisticData 获取趋势统计数据（使用 send_stats 表）
-func GetTrendStatisticData(days int) (TrendStatisticData, error) {
+func GetTrendStatisticData(days int, startTime string, endTime string) (TrendStatisticData, error) {
 	var statistic TrendStatisticData
 	var latestData []LatestSendData
 	statsTable := GetSchema(SendStats{})
@@ -445,10 +460,6 @@ func GetTrendStatisticData(days int) (TrendStatisticData, error) {
 		days = 30
 	}
 
-	now := util.GetNowTime()
-	past := now.AddDate(0, 0, -days)
-	pastDate := past.Format("2006-01-02")
-
 	queryData := db.
 		Table(statsTable).
 		Select(`
@@ -457,9 +468,19 @@ func GetTrendStatisticData(days int) (TrendStatisticData, error) {
 			SUM(CASE WHEN status = 'failed' THEN num ELSE 0 END) AS day_failed_num,
 			SUM(num) AS num
 		`).
-		Where("day >= ?", pastDate).
 		Group("day").
 		Order("day")
+
+	startDay := normalizeStatisticDay(startTime)
+	endDay := normalizeStatisticDay(endTime)
+	if startDay != "" && endDay != "" {
+		queryData = queryData.Where("day >= ? AND day <= ?", startDay, endDay)
+	} else {
+		now := util.GetNowTime()
+		past := now.AddDate(0, 0, -days)
+		pastDate := past.Format("2006-01-02")
+		queryData = queryData.Where("day >= ?", pastDate)
+	}
 
 	queryData.Scan(&latestData)
 	statistic.LatestSendData = latestData
@@ -483,6 +504,8 @@ func GetChannelStatisticData() (ChannelStatisticData, error) {
 		Table(insTable).
 		Select(fmt.Sprintf("%s.name as way_name, COUNT(*) as count_num", waysTable)).
 		Joins(fmt.Sprintf("JOIN %s ON %s.way_id = %s.id", waysTable, insTable, waysTable)).
+		Where(notDeleted(insTable)).
+		Where(notDeleted(waysTable)).
 		Group(fmt.Sprintf("%s.name", waysTable)).
 		Scan(&wayStats).Error
 

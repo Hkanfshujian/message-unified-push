@@ -26,7 +26,7 @@ var (
 	//go:embed web/dist/*
 	f embed.FS
 
-	//go:embed .release*
+	//go:embed .release_version
 	rf embed.FS
 )
 

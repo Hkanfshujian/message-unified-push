@@ -2,9 +2,9 @@ package mq_source_service
 
 import (
 	"fmt"
-	"ops-message-unified-push/models"
 	"net"
 	"net/url"
+	"ops-message-unified-push/models"
 	"strings"
 	"time"
 )
@@ -79,7 +79,7 @@ func (s *MQSourceService) Edit(id string, req EditMQSourceRequest) error {
 }
 
 // Delete 删除数据源
-func (s *MQSourceService) Delete(id string) error {
+func (s *MQSourceService) Archive(id string) error {
 	// 检查是否有绑定的订阅
 	count, err := models.GetSubscriptionsTotal("", id, "", "")
 	if err != nil {
@@ -89,7 +89,7 @@ func (s *MQSourceService) Delete(id string) error {
 		return fmt.Errorf("该数据源还有 %d 个订阅，请先删除订阅", count)
 	}
 
-	return models.DeleteMQSource(id)
+	return models.ArchiveMQSource(id)
 }
 
 // GetByID 根据 ID 获取数据源

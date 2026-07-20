@@ -67,11 +67,11 @@ func (s *RoleManageService) Edit() error {
 	})
 }
 
-func (s *RoleManageService) Delete() error {
+func (s *RoleManageService) Archive() error {
 	if _, err := models.GetRoleByID(s.ID); err != nil {
 		return err
 	}
-	return models.DeleteRoleByID(s.ID)
+	return models.ArchiveRoleByID(s.ID)
 }
 
 type GroupManageService struct {
@@ -131,11 +131,11 @@ func (s *GroupManageService) Edit() error {
 	})
 }
 
-func (s *GroupManageService) Delete() error {
+func (s *GroupManageService) Archive() error {
 	if _, err := models.GetUserGroupByID(s.ID); err != nil {
 		return err
 	}
-	return models.DeleteUserGroupByID(s.ID)
+	return models.ArchiveUserGroupByID(s.ID)
 }
 
 type PermissionManageService struct {
@@ -209,11 +209,11 @@ func (s *PermissionManageService) Edit() error {
 	})
 }
 
-func (s *PermissionManageService) Delete() error {
+func (s *PermissionManageService) Archive() error {
 	if _, err := models.GetPermissionByID(s.ID); err != nil {
 		return err
 	}
-	return models.DeletePermissionByID(s.ID)
+	return models.ArchivePermissionByID(s.ID)
 }
 
 type RelationManageService struct {
@@ -325,7 +325,7 @@ func (s *UserManageService) Edit() error {
 	return models.EditUserByID(s.ID, data)
 }
 
-func (s *UserManageService) Delete() error {
+func (s *UserManageService) Archive() error {
 	user, err := models.GetUserByID(s.ID)
 	if err != nil {
 		return err
@@ -333,7 +333,7 @@ func (s *UserManageService) Delete() error {
 	if strings.EqualFold(strings.TrimSpace(user.Username), "admin") {
 		return errors.New("admin 用户不可删除")
 	}
-	return models.DeleteUserByID(s.ID)
+	return models.ArchiveUserByID(s.ID)
 }
 
 func IsNotFoundErr(err error) bool {

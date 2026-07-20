@@ -23,7 +23,54 @@ type AttemptInfo struct {
 	LockUntil   time.Time
 }
 
-var loginAttempts sync.Map
+type attemptStore struct {
+	mu      sync.RWMutex
+	entries map[string]*AttemptInfo
+}
+
+// SoftDeleteModel is not applicable to this process-local rate-limit cache;
+// entries have no persistent identity and are evicted after their TTL.
+
+func (s *attemptStore) Load(key string) (*AttemptInfo, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	info, ok := s.entries[key]
+	return info, ok
+}
+
+func (s *attemptStore) Store(key string, info *AttemptInfo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.entries[key] = info
+}
+
+func (s *attemptStore) Remove(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	next := make(map[string]*AttemptInfo, len(s.entries))
+	for entryKey, info := range s.entries {
+		if entryKey != key {
+			next[entryKey] = info
+		}
+	}
+	s.entries = next
+}
+
+func (s *attemptStore) Range(fn func(string, *AttemptInfo) bool) {
+	s.mu.RLock()
+	snapshot := make(map[string]*AttemptInfo, len(s.entries))
+	for key, info := range s.entries {
+		snapshot[key] = info
+	}
+	s.mu.RUnlock()
+	for key, info := range snapshot {
+		if !fn(key, info) {
+			return
+		}
+	}
+}
+
+var loginAttempts = attemptStore{entries: make(map[string]*AttemptInfo)}
 
 const (
 	MaxFailures      = 5
@@ -37,11 +84,10 @@ func init() {
 		for {
 			time.Sleep(30 * time.Minute)
 			now := time.Now()
-			loginAttempts.Range(func(key, value interface{}) bool {
-				info := value.(*AttemptInfo)
+			loginAttempts.Range(func(key string, info *AttemptInfo) bool {
 				// 如果距离上次尝试已经超过了重置时间，且也没有在锁定中，就可以清理掉了
 				if now.Sub(info.LastAttempt) > FailResetTime && now.After(info.LockUntil) {
-					loginAttempts.Delete(key)
+					loginAttempts.Remove(key)
 				}
 				return true
 			})
@@ -80,8 +126,8 @@ func GetAuth(c *gin.Context) {
 	ip := c.ClientIP()
 	now := time.Now()
 	var info *AttemptInfo
-	if val, ok := loginAttempts.Load(ip); ok {
-		info = val.(*AttemptInfo)
+	if storedInfo, ok := loginAttempts.Load(ip); ok {
+		info = storedInfo
 		if now.Before(info.LockUntil) {
 			appG.CResponse(http.StatusForbidden, fmt.Sprintf("登录失败次数过多，请于%d分钟后再试！", int(info.LockUntil.Sub(now).Minutes())+1), nil)
 			return
@@ -119,7 +165,7 @@ func GetAuth(c *gin.Context) {
 	}
 
 	// 成功登录则清除失败记录
-	loginAttempts.Delete(ip)
+	loginAttempts.Remove(ip)
 
 	// 获取配置的 cookie 过期天数
 	expDays := settings_service.GetCookieExpDays()
@@ -197,7 +243,7 @@ func GetPublicAuthConfig(c *gin.Context) {
 	c.Header("Expires", "0")
 	appG.CResponse(http.StatusOK, "获取认证公开配置成功", map[string]interface{}{
 		"casdoor_enabled":     boolToSettingString(isCasdoorEnabled()),
-		"register_enabled":   boolToSettingString(isRegisterEnabled()),
+		"register_enabled":    boolToSettingString(isRegisterEnabled()),
 		"casdoor_button_text": getCasdoorButtonText(),
 		"casdoor_button_icon": getCasdoorButtonIcon(),
 	})

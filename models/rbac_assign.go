@@ -2,108 +2,35 @@ package models
 
 import "gorm.io/gorm"
 
+// RBAC join rows are replace-set associations, so each set is rebuilt atomically.
+
 func SetRolePermissions(roleID uint, permissionIDs []uint, operator string) error {
-	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("role_id = ?", roleID).Delete(&RbacRolePermission{}).Error; err != nil {
-			return err
-		}
-		for _, permissionID := range permissionIDs {
-			if err := tx.Create(&RbacRolePermission{
-				IDModel: IDModel{
-					CreatedBy:  operator,
-					ModifiedBy: operator,
-				},
-				RoleID:       roleID,
-				PermissionID: permissionID,
-			}).Error; err != nil {
-				return err
-			}
-		}
-		return nil
+	return WithTransaction(func(tx *gorm.DB) error {
+		return replaceRolePermissions(tx, roleID, permissionIDs, operator)
 	})
 }
 
 func SetGroupRoles(groupID uint, roleIDs []uint, operator string) error {
-	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("group_id = ?", groupID).Delete(&RbacGroupRole{}).Error; err != nil {
-			return err
-		}
-		for _, roleID := range roleIDs {
-			if err := tx.Create(&RbacGroupRole{
-				IDModel: IDModel{
-					CreatedBy:  operator,
-					ModifiedBy: operator,
-				},
-				GroupID: groupID,
-				RoleID:  roleID,
-			}).Error; err != nil {
-				return err
-			}
-		}
-		return nil
+	return WithTransaction(func(tx *gorm.DB) error {
+		return replaceGroupRoles(tx, groupID, roleIDs, operator)
 	})
 }
 
 func SetGroupMembers(groupID uint, userIDs []int, operator string) error {
-	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("group_id = ?", groupID).Delete(&RbacUserGroupMember{}).Error; err != nil {
-			return err
-		}
-		for _, userID := range userIDs {
-			if err := tx.Create(&RbacUserGroupMember{
-				IDModel: IDModel{
-					CreatedBy:  operator,
-					ModifiedBy: operator,
-				},
-				UserID:  userID,
-				GroupID: groupID,
-			}).Error; err != nil {
-				return err
-			}
-		}
-		return nil
+	return WithTransaction(func(tx *gorm.DB) error {
+		return replaceGroupMembers(tx, groupID, userIDs, operator)
 	})
 }
 
 func SetUserRoles(userID int, roleIDs []uint, operator string) error {
-	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("user_id = ?", userID).Delete(&RbacUserRole{}).Error; err != nil {
-			return err
-		}
-		for _, roleID := range roleIDs {
-			if err := tx.Create(&RbacUserRole{
-				IDModel: IDModel{
-					CreatedBy:  operator,
-					ModifiedBy: operator,
-				},
-				UserID: userID,
-				RoleID: roleID,
-			}).Error; err != nil {
-				return err
-			}
-		}
-		return nil
+	return WithTransaction(func(tx *gorm.DB) error {
+		return replaceUserRoles(tx, userID, roleIDs, operator)
 	})
 }
 
 func SetUserGroups(userID int, groupIDs []uint, operator string) error {
-	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("user_id = ?", userID).Delete(&RbacUserGroupMember{}).Error; err != nil {
-			return err
-		}
-		for _, groupID := range groupIDs {
-			if err := tx.Create(&RbacUserGroupMember{
-				IDModel: IDModel{
-					CreatedBy:  operator,
-					ModifiedBy: operator,
-				},
-				UserID:  userID,
-				GroupID: groupID,
-			}).Error; err != nil {
-				return err
-			}
-		}
-		return nil
+	return WithTransaction(func(tx *gorm.DB) error {
+		return replaceUserGroups(tx, userID, groupIDs, operator)
 	})
 }
 

@@ -30,7 +30,7 @@ type EditRoleReq struct {
 	Status      int    `json:"status" validate:"omitempty,oneof=0 1" label:"角色状态"`
 }
 
-type DeleteRoleReq struct {
+type ArchiveRoleReq struct {
 	ID uint `json:"id" validate:"required" label:"角色ID"`
 }
 
@@ -107,8 +107,8 @@ func EditRbacRole(c *gin.Context) {
 	appG.CResponse(http.StatusOK, "编辑角色成功", nil)
 }
 
-func DeleteRbacRole(c *gin.Context) {
-	var req DeleteRoleReq
+func ArchiveRbacRole(c *gin.Context) {
+	var req ArchiveRoleReq
 	appG := app.Gin{C: c}
 	errCode, errMsg := app.BindJsonAndPlayValid(c, &req)
 	if errCode != e.SUCCESS {
@@ -116,7 +116,7 @@ func DeleteRbacRole(c *gin.Context) {
 		return
 	}
 	service := rbac_service.RoleManageService{ID: req.ID}
-	if err := service.Delete(); err != nil {
+	if err := service.Archive(); err != nil {
 		appG.CResponse(http.StatusBadRequest, fmt.Sprintf("删除角色失败：%s", err.Error()), nil)
 		return
 	}
@@ -138,7 +138,7 @@ type EditGroupReq struct {
 	Status      int    `json:"status" validate:"omitempty,oneof=0 1" label:"用户组状态"`
 }
 
-type DeleteGroupReq struct {
+type ArchiveGroupReq struct {
 	ID uint `json:"id" validate:"required" label:"用户组ID"`
 }
 
@@ -215,8 +215,8 @@ func EditRbacGroup(c *gin.Context) {
 	appG.CResponse(http.StatusOK, "编辑用户组成功", nil)
 }
 
-func DeleteRbacGroup(c *gin.Context) {
-	var req DeleteGroupReq
+func ArchiveRbacGroup(c *gin.Context) {
+	var req ArchiveGroupReq
 	appG := app.Gin{C: c}
 	errCode, errMsg := app.BindJsonAndPlayValid(c, &req)
 	if errCode != e.SUCCESS {
@@ -224,7 +224,7 @@ func DeleteRbacGroup(c *gin.Context) {
 		return
 	}
 	service := rbac_service.GroupManageService{ID: req.ID}
-	if err := service.Delete(); err != nil {
+	if err := service.Archive(); err != nil {
 		appG.CResponse(http.StatusBadRequest, fmt.Sprintf("删除用户组失败：%s", err.Error()), nil)
 		return
 	}
@@ -373,7 +373,7 @@ type EditManageUserReq struct {
 	Password string `json:"passwd" validate:"omitempty,min=6,max=50" label:"密码"`
 }
 
-type DeleteManageUserReq struct {
+type ArchiveManageUserReq struct {
 	ID int `json:"id" validate:"required" label:"用户ID"`
 }
 
@@ -596,8 +596,8 @@ func EditManageUser(c *gin.Context) {
 	appG.CResponse(http.StatusOK, "编辑用户成功", nil)
 }
 
-func DeleteManageUser(c *gin.Context) {
-	var req DeleteManageUserReq
+func ArchiveManageUser(c *gin.Context) {
+	var req ArchiveManageUserReq
 	appG := app.Gin{C: c}
 	errCode, errMsg := app.BindJsonAndPlayValid(c, &req)
 	if errCode != e.SUCCESS {
@@ -605,7 +605,7 @@ func DeleteManageUser(c *gin.Context) {
 		return
 	}
 	service := rbac_service.UserManageService{ID: req.ID}
-	if err := service.Delete(); err != nil {
+	if err := service.Archive(); err != nil {
 		appG.CResponse(http.StatusBadRequest, fmt.Sprintf("删除用户失败：%s", err.Error()), nil)
 		return
 	}

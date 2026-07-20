@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
-import { toast } from 'vue-sonner'
-import { request } from '@/api/api'
+import { scheduledMessagesApi } from '@/api/scheduledMessages'
+import { notifyError, notifySuccess } from '@/util/uiFeedback'
 import CronMessageForm from './CronMessageForm.vue'
 
 interface CronMessageItem {
@@ -45,7 +45,19 @@ const loading = ref(false)
 // 提交表单
 const handleSubmit = async () => {
   if (!props.cronMessage) {
-    toast.error('未找到要编辑的定时消息')
+    notifyError('未找到要编辑的定时消息')
+    return
+  }
+  if (!formData.name.trim()) {
+    notifyError('请输入定时消息名称')
+    return
+  }
+  if (!formData.template_id) {
+    notifyError('请选择关联的消息模板')
+    return
+  }
+  if (!formData.cron_expression.trim()) {
+    notifyError('请输入 Cron 表达式')
     return
   }
   
@@ -62,15 +74,16 @@ const handleSubmit = async () => {
       "enable": props.cronMessage.enable,
     }
 
-    const rsp = await request.post('/cronmessages/edit', postData)
+    const rsp = await scheduledMessagesApi.update(postData)
     if (rsp.data.code === 200) {
-      toast.success(rsp.data.msg)
-      setTimeout(() => {
-        window.location.reload()
-      }, 1000)
+      notifySuccess(rsp.data.msg || '更新定时消息成功')
+      emit('save', postData)
+      emit('update:open', false)
     } else {
-        toast.success(rsp.data.msg)
-      }
+      notifyError(rsp.data.msg || '更新定时消息失败')
+    }
+  } catch (error: any) {
+    notifyError(error?.response?.data?.msg || '更新定时消息失败')
   } finally {
     loading.value = false
   }
@@ -86,7 +99,7 @@ const handleCancel = () => {
 const handleSendNow = async () => {
   // 验证必填字段
   if (!formData.template_id) {
-    toast.error('请先选择关联的消息模板')
+    notifyError('请先选择关联的消息模板')
     return
   }
 
@@ -99,14 +112,14 @@ const handleSendNow = async () => {
       title: formData.name
     }
 
-    const rsp = await request.post('/cronmessages/sendnow', postData)
+    const rsp = await scheduledMessagesApi.sendNow(postData)
     if (rsp.data.code === 200) {
-      toast.success(rsp.data.msg)
+      notifySuccess(rsp.data.msg || '发送成功')
     } else {
-      toast.error(rsp.data.msg)
+      notifyError(rsp.data.msg || '发送失败')
     }
   } catch (error) {
-    toast.error('发送失败，请稍后重试')
+    notifyError('发送失败，请稍后重试')
   } finally {
     loading.value = false
   }

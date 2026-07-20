@@ -522,7 +522,7 @@ func (sw *SendWay) Edit() error {
 	return models.EditSendWay(sw.ID, data)
 }
 
-func (sw *SendWay) Delete() error {
+func (sw *SendWay) Archive() error {
 	names, err := models.FindWayUsageNames(sw.ID)
 	if err != nil {
 		return err
@@ -530,7 +530,7 @@ func (sw *SendWay) Delete() error {
 	if len(names) > 0 {
 		return fmt.Errorf("已经存在使用该渠道的模板，删除失败！模板名：%s", strings.Join(names, ", "))
 	}
-	return models.DeleteMsgWay(sw.ID)
+	return models.ArchiveMsgWay(sw.ID)
 }
 
 func (sw *SendWay) Count() (int64, error) {

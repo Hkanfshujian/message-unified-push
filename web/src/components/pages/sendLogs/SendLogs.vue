@@ -1,71 +1,91 @@
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import EmptyTableState from '@/components/ui/EmptyTableState.vue'
-import ClickableTruncate from '@/components/ui/ClickableTruncate.vue'
-import Pagination from '@/components/ui/Pagination.vue'
-import DateTimePicker from '@/components/ui/DateTimePicker.vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { Download, Refresh, Search } from '@element-plus/icons-vue'
+import { useRoute, useRouter } from 'vue-router'
+import AppDateTimeRange from '@/components/ui/AppDateTimeRange.vue'
+import AppDetailDrawer from '@/components/ui/AppDetailDrawer.vue'
+import AppEmptyState from '@/components/ui/AppEmptyState.vue'
+import AppPagination from '@/components/ui/AppPagination.vue'
+import AppRowActions from '@/components/ui/AppRowActions.vue'
+import AppStatusTag from '@/components/ui/AppStatusTag.vue'
+import AppTable, { type AppTableColumn } from '@/components/ui/AppTable.vue'
+import AppTableToolbar from '@/components/ui/table-toolbar/AppTableToolbar.vue'
+import AppTruncate from '@/components/ui/AppTruncate.vue'
+import { sendLogsApi } from '@/api/logs'
+import { getPageSize } from '@/util/pageUtils'
+import { createTableToolbarState, getVisibleToolbarColumns } from '@/components/ui/table-toolbar/tableToolbar'
+import type { TableToolbarColumn } from '@/components/ui/table-toolbar/types'
+import { downloadBlob, notifyError, notifySuccess } from '@/util/uiFeedback'
+import { zhCN } from '@/locales/zh-CN'
 
-import { useRoute, useRouter } from 'vue-router';
-import { request } from '@/api/api';
-// @ts-ignore
-import { getPageSize } from '@/util/pageUtils';
-
+const messages = zhCN.sendLogs
 
 interface LogItem {
   id: number
   task_id: string
-  type: string  // 类型：task 或 template
-  name: string  // 任务或模板名称
+  type: string
+  name: string
   log: string
   created_on: string
   caller_ip?: string
   status: number
 }
 
-const route = useRoute();
-const router = useRouter();
+const route = useRoute()
+const router = useRouter()
 
-let state = reactive({
-  tableData: [] as LogItem[],
-  total: 0,
-  currPage: 1,
-  pageSize: getPageSize(),
-  search: '',
-  optionValue: '',  // 保存 taskid，用于过滤
-})
-
-// 获取当天时间范围
 const getTodayRange = () => {
   const now = new Date()
   const year = now.getFullYear()
   const month = String(now.getMonth() + 1).padStart(2, '0')
   const day = String(now.getDate()).padStart(2, '0')
-  return {
-    start: `${year}-${month}-${day}T00:00`,
-    end: `${year}-${month}-${day}T23:59`
-  }
+  return [`${year}-${month}-${day}T00:00`, `${year}-${month}-${day}T23:59`] as [string, string]
 }
 
-// 时间范围过滤 - 默认当天
-const todayRange = getTodayRange()
-const startTime = ref(todayRange.start)
-const endTime = ref(todayRange.end)
+const state = reactive({
+  tableData: [] as LogItem[],
+  total: 0,
+  currPage: 1,
+  pageSize: getPageSize(),
+  search: '',
+  optionValue: '',
+  loading: false
+})
 
-// 状态过滤
+const timeRange = ref<[string, string] | []>(getTodayRange())
 const selectedStatus = ref('all')
-// Sheet 相关状态
-const isSheetOpen = ref(false)
-const selectedLog = ref('')
-const selectedTaskName = ref('')
-// 总页数
-const totalPages = computed(() => Math.ceil(state.total / state.pageSize))
+const isDrawerOpen = ref(false)
+const selectedLog = ref<LogItem | null>(null)
 const hasTemplateFilter = computed(() => String(state.optionValue || '').trim() !== '')
+
+const columns: AppTableColumn[] = [
+  { prop: 'id', label: 'ID', width: 90, align: 'center' },
+  { prop: 'type', label: '类型', width: 120, align: 'center' },
+  { prop: 'name', label: '名称', minWidth: 180 },
+  { prop: 'log', label: '发信日志', minWidth: 320 },
+  { prop: 'created_on', label: '发送时间', minWidth: 170 },
+  { prop: 'status', label: '状态', width: 100, align: 'center' },
+  { prop: 'actions', label: '操作', width: 120, align: 'center', fixed: 'right' }
+]
+
+const toolbarColumns: TableToolbarColumn[] = columns.map(column => ({
+  key: column.prop || column.label,
+  label: column.label,
+  required: column.prop === 'id' || column.prop === 'actions'
+}))
+
+const tableToolbar = reactive(createTableToolbarState(toolbarColumns))
+const visibleColumns = computed(() => getVisibleToolbarColumns(columns, tableToolbar.visibleColumns))
+
+const refreshTable = async () => {
+  if (tableToolbar.refreshing) return
+  tableToolbar.refreshing = true
+  try {
+    await queryListData()
+  } finally {
+    tableToolbar.refreshing = false
+  }
+}
 
 const parsePositiveNumber = (value: unknown, fallback: number) => {
   const n = Number(value)
@@ -73,45 +93,31 @@ const parsePositiveNumber = (value: unknown, fallback: number) => {
   return Math.floor(n)
 }
 
-const getStatusText = (status: number) => {
-  return status === 1 ? '成功' : '失败'
-}
-
-// 获取类型文本
 const getTypeText = (type: string) => {
   if (type === 'template') return '接口调用'
   if (type === 'cron_message') return '定时消息'
   return '系统任务'
 }
 
-// 获取类型徽章样式
-const getTypeBadgeVariant = (type: string) => {
-  return type === 'template' ? 'secondary' : 'default'
-}
+const getTypeTagType = (type: string) => type === 'template' ? 'info' : 'primary'
 
-// 获取显示名称
-const getDisplayName = (task: LogItem) => {
-  return task.name || '-'
-}
-
-// 打开日志详情Sheet
-const openLogSheet = (task: LogItem) => {
-  selectedLog.value = formatLogDisplayHtml(task);
-  selectedTaskName.value = getDisplayName(task)
-  isSheetOpen.value = true
+const openLogDrawer = (task: LogItem) => {
+  selectedLog.value = task
+  isDrawerOpen.value = true
 }
 
 const buildRouteQuery = () => {
   const nextQuery: Record<string, string> = {
     page: String(state.currPage),
-    size: String(state.pageSize),
+    size: String(state.pageSize)
   }
   const name = state.search.trim()
   if (name) nextQuery.name = name
   if (state.optionValue) nextQuery.taskid = state.optionValue
-  if (selectedStatus.value && selectedStatus.value !== 'all') nextQuery.status = selectedStatus.value
-  if (startTime.value) nextQuery.start_time = startTime.value
-  if (endTime.value) nextQuery.end_time = endTime.value
+  if (selectedStatus.value !== 'all') nextQuery.status = selectedStatus.value
+  const [startTime, endTime] = timeRange.value
+  if (startTime) nextQuery.start_time = startTime
+  if (endTime) nextQuery.end_time = endTime
   return nextQuery
 }
 
@@ -119,80 +125,79 @@ const syncRouteQuery = async () => {
   await router.replace({ path: route.path, query: buildRouteQuery() })
 }
 
-const changePage = async (page: number) => {
-  if (page >= 1 && page <= totalPages.value) {
-    state.currPage = page
-    await queryListDataWithStatus()
+const buildParams = () => {
+  const params: Record<string, unknown> = {
+    page: state.currPage,
+    size: state.pageSize
+  }
+  if (state.search.trim()) params.name = state.search.trim()
+  if (state.optionValue) params.taskid = state.optionValue
+  if (selectedStatus.value !== 'all') params.status = selectedStatus.value
+  const [startTime, endTime] = timeRange.value
+  if (startTime) params.start_time = startTime
+  if (endTime) params.end_time = endTime
+  return params
+}
+
+const queryListData = async (shouldSyncRoute = true) => {
+  if (shouldSyncRoute) await syncRouteQuery()
+  state.loading = true
+  try {
+    const rsp = await sendLogsApi.list(buildParams())
+    if (rsp?.data?.code === 200) {
+      state.tableData = rsp.data.data?.lists || []
+      state.total = rsp.data.data?.total || 0
+      return
+    }
+    state.tableData = []
+    state.total = 0
+    notifyError(rsp?.data?.msg || '获取发信日志失败')
+  } catch (error) {
+    state.tableData = []
+    state.total = 0
+    notifyError('获取发信日志时发生错误')
+  } finally {
+    state.loading = false
   }
 }
 
-const handlePageSizeChange = async (size: number) => {
-  if (size <= 0) return
-  state.pageSize = size
-  state.currPage = 1
-  await queryListDataWithStatus()
-}
-
-// 格式化处理显示的日志文本
-const formatLogDisplayHtml = (task: LogItem) => {
-  let log = task.log;
-  log += '\n';
-  if (task.caller_ip) {
-    log += `调用来源IP：${task.caller_ip}`;
-  };
-  return log;
-}
-
-//触发过滤筛选
 const filterFunc = async () => {
   state.currPage = 1
-  await queryListDataWithStatus()
+  await queryListData()
 }
 
-// 按状态过滤
-const filterByStatus = async (value: any) => {
-  selectedStatus.value = value;
-  state.currPage = 1; // 重置到第一页
-  await queryListDataWithStatus()
+const filterByStatus = async (value: string) => {
+  selectedStatus.value = value
+  state.currPage = 1
+  await queryListData()
 }
 
-const queryListData = async (page: number, size: number, name = '', taskid = '') => {
-  const params: any = { page, size, name, taskid }
-  if (selectedStatus.value !== '' && selectedStatus.value !== 'all') {
-    params.status = selectedStatus.value
-  }
-  if (startTime.value) {
-    params.start_time = startTime.value
-  }
-  if (endTime.value) {
-    params.end_time = endTime.value
-  }
-
-  const rsp = await request.get('/sendlogs/list', { params })
-  state.tableData = rsp.data.data.lists || []
-  state.total = rsp.data.data.total
-}
-
-const queryListDataWithStatus = async (shouldSyncRoute = true) => {
-  if (shouldSyncRoute) {
-    await syncRouteQuery()
-  }
-  await queryListData(state.currPage, state.pageSize, state.search, state.optionValue)
+const handlePaginationChange = async ({ page, pageSize }: { page: number; pageSize: number }) => {
+  state.currPage = page
+  state.pageSize = pageSize
+  await queryListData()
 }
 
 const clearTemplateFilter = async () => {
   state.optionValue = ''
   state.currPage = 1
-  await queryListDataWithStatus()
+  await queryListData()
 }
 
-// 清除时间过滤 - 恢复当天
 const clearTimeFilter = async () => {
-  const today = getTodayRange()
-  startTime.value = today.start
-  endTime.value = today.end
+  timeRange.value = getTodayRange()
   state.currPage = 1
-  await queryListDataWithStatus()
+  await queryListData()
+}
+
+const handleExport = async () => {
+  try {
+    const rsp = await sendLogsApi.export(buildParams())
+    downloadBlob(rsp.data, `sendlogs-${new Date().toISOString().slice(0, 10)}.csv`)
+    notifySuccess('发信日志导出成功')
+  } catch (error) {
+    notifyError('发信日志导出失败')
+  }
 }
 
 onMounted(async () => {
@@ -200,166 +205,280 @@ onMounted(async () => {
   state.optionValue = route.query.taskid?.toString() || ''
   state.currPage = parsePositiveNumber(route.query.page, 1)
   state.pageSize = parsePositiveNumber(route.query.size, state.pageSize)
-  startTime.value = route.query.start_time?.toString() || startTime.value
-  endTime.value = route.query.end_time?.toString() || endTime.value
-
-  const explicitStatus = route.query.status?.toString()
-  if (explicitStatus && explicitStatus !== 'all') {
-    selectedStatus.value = explicitStatus
-  } else {
-    selectedStatus.value = 'all'
-    const legacyQuery = route.query.query?.toString() || ''
-    if (legacyQuery) {
-      try {
-        const queryObj = JSON.parse(decodeURIComponent(legacyQuery))
-        if (queryObj.status !== undefined) {
-          selectedStatus.value = queryObj.status.toString()
-        }
-      } catch (error) {
-        console.warn('解析旧版query参数失败:', error)
-      }
-    }
-  }
-
-  await queryListDataWithStatus()
+  const startTime = route.query.start_time?.toString()
+  const endTime = route.query.end_time?.toString()
+  if (startTime || endTime) timeRange.value = [startTime || '', endTime || '']
+  selectedStatus.value = route.query.status?.toString() || 'all'
+  await queryListData()
 })
 </script>
 
 <template>
-  <div class="space-y-2">
-    <div v-if="hasTemplateFilter" class="rounded-lg border border-blue-200/70 bg-blue-50/80 px-3 py-2 text-xs text-blue-800 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-200">
-      当前按模板过滤中：<span class="font-semibold">{{ state.optionValue }}</span>
-      <Button size="sm" variant="outline" class="ml-2 h-6 px-2 text-xs" @click="clearTemplateFilter">清除过滤</Button>
-    </div>
-    <div class="toolbar">
-      <div class="search-group" style="flex-wrap: wrap; gap: 8px;">
-        <Input
-          v-model="state.search"
-          placeholder="搜索..."
-          style="width: 200px;"
-          @keyup.enter="filterFunc"
-          @blur="filterFunc"
-        />
-        <Select v-model="selectedStatus" style="width: 100px;" @update:model-value="filterByStatus">
-          <SelectTrigger style="height: 36px;">
-            <SelectValue placeholder="选择状态" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value="all">全部</SelectItem>
-              <SelectItem value="1">成功</SelectItem>
-              <SelectItem value="0">失败</SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <!-- 时间范围过滤 -->
-        <div class="flex items-center gap-1">
-          <DateTimePicker
-            v-model="startTime"
-            placeholder="开始时间"
-            style="width: 180px;"
-            @change="filterFunc"
-          />
-          <span class="text-sm text-muted-foreground px-1">至</span>
-          <DateTimePicker
-            v-model="endTime"
-            placeholder="结束时间"
-            style="width: 180px;"
-            @change="filterFunc"
-          />
-          <Button 
-            v-if="startTime || endTime" 
-            size="sm" 
-            variant="ghost" 
-            @click="clearTimeFilter"
-          >
-            清除
-          </Button>
+  <div class="space-y-4">
+    <el-alert v-if="hasTemplateFilter" type="info" show-icon :closable="false">
+      <template #title>
+        {{ messages.templateFilterPrefix }}<span class="font-semibold">{{ state.optionValue }}</span>
+        <el-button size="small" text type="primary" @click="clearTemplateFilter">{{ messages.clearFilter }}</el-button>
+      </template>
+    </el-alert>
+
+    <el-card shadow="never">
+      <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div class="flex flex-1 flex-col gap-3 lg:flex-row lg:items-center">
+          <el-input v-model="state.search" class="lg:max-w-[240px]" clearable :placeholder="messages.searchPlaceholder" @keyup.enter="filterFunc" @clear="filterFunc">
+            <template #prefix><el-icon><Search /></el-icon></template>
+          </el-input>
+          <el-select v-model="selectedStatus" class="lg:max-w-[140px]" @change="filterByStatus">
+            <el-option :label="messages.allStatuses" value="all" />
+            <el-option :label="messages.success" value="1" />
+            <el-option :label="messages.failure" value="0" />
+          </el-select>
+          <AppDateTimeRange v-model="timeRange" class="lg:max-w-[360px]" @change="filterFunc" />
+          <el-button @click="clearTimeFilter">{{ messages.resetTime }}</el-button>
+          <el-button :icon="Search" @click="filterFunc">{{ messages.search }}</el-button>
+          <el-button :icon="Refresh" @click="queryListData()">{{ messages.refresh }}</el-button>
         </div>
+        <el-button :icon="Download" @click="handleExport">{{ messages.export }}</el-button>
       </div>
-    </div>
+    </el-card>
 
-    <!-- 表格 -->
-    <div class="rounded border weak-divider overflow-x-auto">
-      <Table class="data-table border-collapse">
-      <TableHeader>
-        <TableRow>
-          <TableHead class="w-20">ID</TableHead>
-          <TableHead class="w-24">类型</TableHead>
-          <TableHead>名称</TableHead>
-          <TableHead>发信日志</TableHead>
-          <TableHead class="whitespace-nowrap w-[160px]">发送时间</TableHead>
-          <TableHead class="text-center">详情/状态</TableHead>
-        </TableRow>
-      </TableHeader>
+    <el-card shadow="never" body-class="!p-0" :class="tableToolbar.focused ? 'app-table-focused-card' : ''">
+      <AppTableToolbar
+        :title="messages.title"
+        :columns="toolbarColumns"
+        v-model:visible-columns="tableToolbar.visibleColumns"
+        v-model:focused="tableToolbar.focused"
+        :refreshing="tableToolbar.refreshing || state.loading"
+        @refresh="refreshTable"
+      >
+        <template #summary>
+          <span class="text-xs text-muted-foreground">{{ messages.totalPrefix }}{{ state.total }}{{ messages.itemUnit }}</span>
+        </template>
+      </AppTableToolbar>
+      <AppTable :data="state.tableData as unknown as Record<string, unknown>[]" :columns="visibleColumns" :loading="state.loading" :empty-text="messages.empty">
+        <template #type="{ row }">
+          <el-tag :type="getTypeTagType(String(row.type || 'task'))" effect="light">{{ getTypeText(String(row.type || 'task')) }}</el-tag>
+        </template>
+        <template #name="{ row }">
+          <AppTruncate :text="String(row.name || '-')" :title="messages.name" />
+        </template>
+        <template #log="{ row }">
+          <AppTruncate :text="String(row.log || '-')" :title="messages.log" width="760px" />
+        </template>
+        <template #created_on="{ row }">
+          <span class="text-sm text-muted-foreground">{{ row.created_on || '-' }}</span>
+        </template>
+        <template #status="{ row }">
+          <AppStatusTag :status="row.status" :label-map="{ 1: messages.success, 0: messages.failure }" :success-values="[1]" :danger-values="[0]" />
+        </template>
+        <template #actions="{ row }">
+          <AppRowActions :actions="[
+            { key: 'view', label: messages.view, kind: 'view', onClick: () => openLogDrawer(row as unknown as LogItem) }
+          ]" />
+        </template>
+        <template #empty>
+          <AppEmptyState :description="messages.empty" />
+        </template>
+      </AppTable>
+    </el-card>
 
-      <TableBody>
-        <!-- 空数据展示 -->
-        <TableRow v-if="state.tableData.length === 0">
-          <TableCell colspan="6" class="empty-state">
-            <EmptyTableState 
-              title="暂无发信日志" 
-              description="还没有任何发信日志记录" 
-            >
-              <template #icon>
-                <svg class="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                </svg>
-              </template>
-            </EmptyTableState>
-          </TableCell>
-        </TableRow>
-        
-        <!-- 数据行 -->
-        <TableRow v-for="task in state.tableData" :key="task.id">
-          <TableCell>{{ task.id }}</TableCell>
-          <TableCell>
-            <Badge :variant="getTypeBadgeVariant(task.type || 'task')">
-              {{ getTypeText(task.type || 'task') }}
-            </Badge>
-          </TableCell>
-          <TableCell>
-            <ClickableTruncate :text="getDisplayName(task)" wrapper-class="max-w-[220px] sm:max-w-[360px]" preview-title="名称" />
-          </TableCell>
-          <TableCell>
-            <ClickableTruncate :text="task.log" wrapper-class="max-w-[320px] sm:max-w-[480px]" preview-title="发信日志" />
-          </TableCell>
-          <TableCell class="whitespace-nowrap w-[160px]">{{ task.created_on }}</TableCell>
-          <TableCell class="text-center space-x-2">
-            <Button size="sm" variant="outline" @click="openLogSheet(task)">查看</Button>
-            <!-- <Button size="sm" variant="destructive">删除</Button> -->
-            <Badge :class="task.status === 1 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'">
-              {{ getStatusText(task.status) }}
-            </Badge>
-          </TableCell>
-        </TableRow>
-      </TableBody>
-    </Table>
-    </div>
+    <AppPagination v-model:current-page="state.currPage" v-model:page-size="state.pageSize" :total="state.total" @change="handlePaginationChange" />
 
-    <!-- 分页 -->
-    <div class="pagination">
-      <Pagination 
-        :total="state.total" 
-        :current-page="state.currPage" 
-        :page-size="state.pageSize" 
-        @page-change="changePage"
-        @page-size-change="handlePageSizeChange"
-      />
-    </div>
-
-    <!-- 日志详情Sheet -->
-    <Sheet v-model:open="isSheetOpen" class="lg:w-[900px] ">
-      <SheetContent class="lg:w-[900px]">
-        <SheetHeader>
-          <SheetTitle>{{ selectedTaskName }} - 发信日志详情</SheetTitle>
-        </SheetHeader>
-        <div class="mt-4">
-          <div class="rounded-lg p-4 bg-muted/40 dark:bg-white/5 ring-1 ring-border/50 shadow-sm max-h-[82vh] overflow-y-auto break-words">
-            <pre class="whitespace-pre-wrap text-sm font-mono leading-relaxed text-foreground">{{ selectedLog }}</pre>
+    <AppDetailDrawer v-model="isDrawerOpen" :title="messages.detailTitle" size="760px">
+      <div v-if="selectedLog" class="send-log-details">
+        <section class="send-log-summary">
+          <div class="send-log-summary-main">
+            <span class="send-log-summary-type">{{ getTypeText(selectedLog.type) }}</span>
+            <h3>{{ selectedLog.name || messages.unnamedTask }}</h3>
+            <code>#{{ selectedLog.id }}</code>
           </div>
-        </div>
-      </SheetContent>
-    </Sheet>
+          <AppStatusTag :status="selectedLog.status" :label-map="{ 1: messages.success, 0: messages.failure }" :success-values="[1]" :danger-values="[0]" />
+        </section>
+        <section class="send-log-detail-section">
+          <header><h3>{{ messages.basicInfo }}</h3></header>
+          <dl class="send-log-info">
+            <div><dt>{{ messages.taskId }}</dt><dd>{{ selectedLog.task_id || '-' }}</dd></div>
+            <div><dt>{{ messages.logType }}</dt><dd>{{ getTypeText(selectedLog.type) }}</dd></div>
+            <div><dt>{{ messages.sendTime }}</dt><dd>{{ selectedLog.created_on || '-' }}</dd></div>
+            <div><dt>{{ messages.callerIp }}</dt><dd>{{ selectedLog.caller_ip || '-' }}</dd></div>
+          </dl>
+        </section>
+        <section class="send-log-detail-section send-log-content-section">
+          <header><h3>{{ messages.logBody }}</h3></header>
+          <pre class="send-log-detail-content">{{ selectedLog.log || '-' }}</pre>
+        </section>
+      </div>
+    </AppDetailDrawer>
   </div>
 </template>
+
+<style scoped>
+.send-log-details {
+  display: grid;
+  gap: 14px;
+  max-width: 100%;
+}
+
+.send-log-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--brand-500) 20%, var(--app-overlay-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--brand-50) 58%, var(--app-overlay-surface));
+}
+
+.send-log-summary-main {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.send-log-summary-type {
+  color: var(--admin-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.send-log-summary h3 {
+  min-width: 0;
+  overflow: hidden;
+  margin: 0;
+  color: var(--admin-text-primary);
+  font-size: 15px;
+  font-weight: 720;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.send-log-summary code {
+  color: var(--admin-text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.send-log-detail-section {
+  overflow: hidden;
+  border: 1px solid var(--app-overlay-border);
+  border-radius: 12px;
+  background: var(--app-overlay-surface);
+}
+
+.send-log-detail-section > header {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--app-overlay-border);
+  background: color-mix(in srgb, var(--app-overlay-surface) 92%, var(--brand-50));
+}
+
+.send-log-detail-section > header h3 {
+  margin: 0;
+  color: var(--admin-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.send-log-info {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.send-log-info > div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  min-height: 40px;
+  align-items: center;
+  padding: 6px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--app-overlay-border) 72%, transparent);
+}
+
+.send-log-info > div:nth-child(odd) {
+  border-right: 1px solid color-mix(in srgb, var(--app-overlay-border) 72%, transparent);
+}
+
+.send-log-info > div:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.send-log-info dt,
+.send-log-info dd {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.send-log-info dt {
+  color: var(--admin-text-muted);
+  font-size: 12px;
+}
+
+.send-log-info dd {
+  min-width: 0;
+  color: var(--admin-text-primary);
+  font-size: 12px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+
+.send-log-content-section {
+  min-height: 180px;
+}
+
+.send-log-detail-content {
+  box-sizing: border-box;
+  min-height: 140px;
+  max-height: min(42vh, 380px);
+  margin: 0;
+  overflow: auto;
+  padding: 14px;
+  background: color-mix(in srgb, var(--app-overlay-surface) 91%, #000 3%);
+  color: var(--admin-text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  scrollbar-color: color-mix(in srgb, var(--brand-500) 55%, var(--app-overlay-border)) transparent;
+  scrollbar-width: thin;
+}
+
+@media (max-width: 760px) {
+  .send-log-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .send-log-summary-main {
+    width: 100%;
+    grid-template-columns: 1fr auto;
+  }
+
+  .send-log-summary-type {
+    grid-column: 1 / -1;
+  }
+
+  .send-log-info {
+    grid-template-columns: 1fr;
+  }
+
+  .send-log-info > div,
+  .send-log-info > div:nth-child(odd),
+  .send-log-info > div:nth-last-child(-n + 2) {
+    border-right: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--app-overlay-border) 72%, transparent);
+  }
+
+  .send-log-info > div:last-child {
+    border-bottom: 0;
+  }
+}
+</style>

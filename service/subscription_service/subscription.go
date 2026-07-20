@@ -17,40 +17,40 @@ type SubscriptionService struct {
 }
 
 type AddSubscriptionRequest struct {
-	Name                string `json:"name" binding:"required,max=200"`
-	SourceID            string `json:"source_id" binding:"required"`
-	Topic               string `json:"topic" binding:"required,max=200"`
-	Tag                 string `json:"tag" binding:"max=200"`
-	GroupName           string `json:"group_name" binding:"required,max=200"`
-	ValidateRegex       string `json:"validate_regex"`
-	ExtractRegex        string `json:"extract_regex"`
-	ExtractField        string `json:"extract_field" binding:"max=100"`
+	Name                string                          `json:"name" binding:"required,max=200"`
+	SourceID            string                          `json:"source_id" binding:"required"`
+	Topic               string                          `json:"topic" binding:"required,max=200"`
+	Tag                 string                          `json:"tag" binding:"max=200"`
+	GroupName           string                          `json:"group_name" binding:"required,max=200"`
+	ValidateRegex       string                          `json:"validate_regex"`
+	ExtractRegex        string                          `json:"extract_regex"`
+	ExtractField        string                          `json:"extract_field" binding:"max=100"`
 	ExtractRules        []subscription_rule.ExtractRule `json:"extract_rules"`
-	TemplateID          string `json:"template_id" binding:"required"`
-	TemplateContentType string `json:"template_content_type" binding:"omitempty,oneof=text html markdown"`
-	ConsumeMode         string `json:"consume_mode" binding:"omitempty,oneof=text html markdown push pull"`
+	TemplateID          string                          `json:"template_id" binding:"required"`
+	TemplateContentType string                          `json:"template_content_type" binding:"omitempty,oneof=text html markdown"`
+	ConsumeMode         string                          `json:"consume_mode" binding:"omitempty,oneof=text html markdown push pull"`
 }
 
 type EditSubscriptionRequest struct {
-	Name                string `json:"name" binding:"required,max=200"`
-	SourceID            string `json:"source_id" binding:"required"`
-	Topic               string `json:"topic" binding:"required,max=200"`
-	Tag                 string `json:"tag" binding:"max=200"`
-	GroupName           string `json:"group_name" binding:"required,max=200"`
-	ValidateRegex       string `json:"validate_regex"`
-	ExtractRegex        string `json:"extract_regex"`
-	ExtractField        string `json:"extract_field" binding:"max=100"`
+	Name                string                          `json:"name" binding:"required,max=200"`
+	SourceID            string                          `json:"source_id" binding:"required"`
+	Topic               string                          `json:"topic" binding:"required,max=200"`
+	Tag                 string                          `json:"tag" binding:"max=200"`
+	GroupName           string                          `json:"group_name" binding:"required,max=200"`
+	ValidateRegex       string                          `json:"validate_regex"`
+	ExtractRegex        string                          `json:"extract_regex"`
+	ExtractField        string                          `json:"extract_field" binding:"max=100"`
 	ExtractRules        []subscription_rule.ExtractRule `json:"extract_rules"`
-	TemplateID          string `json:"template_id" binding:"required"`
-	TemplateContentType string `json:"template_content_type" binding:"omitempty,oneof=text html markdown"`
-	ConsumeMode         string `json:"consume_mode" binding:"omitempty,oneof=text html markdown push pull"`
+	TemplateID          string                          `json:"template_id" binding:"required"`
+	TemplateContentType string                          `json:"template_content_type" binding:"omitempty,oneof=text html markdown"`
+	ConsumeMode         string                          `json:"consume_mode" binding:"omitempty,oneof=text html markdown push pull"`
 }
 
 type RegexTestRequest struct {
-	Message       string `json:"message" binding:"required"`
-	ValidateRegex string `json:"validate_regex"`
-	ExtractRegex  string `json:"extract_regex"`
-	ExtractField  string `json:"extract_field" binding:"max=100"`
+	Message       string                          `json:"message" binding:"required"`
+	ValidateRegex string                          `json:"validate_regex"`
+	ExtractRegex  string                          `json:"extract_regex"`
+	ExtractField  string                          `json:"extract_field" binding:"max=100"`
 	ExtractRules  []subscription_rule.ExtractRule `json:"extract_rules"`
 }
 
@@ -60,26 +60,26 @@ type RegexTestResult struct {
 }
 
 type SubscriptionListItem struct {
-	ID                  string `json:"id"`
-	Name                string `json:"name"`
-	SourceID            string `json:"source_id"`
-	SourceName          string `json:"source_name"`
-	Topic               string `json:"topic"`
-	Tag                 string `json:"tag"`
-	GroupName           string `json:"group_name"`
-	ValidateRegex       string `json:"validate_regex"`
-	ExtractRegex        string `json:"extract_regex"`
-	ExtractField        string `json:"extract_field"`
+	ID                  string                          `json:"id"`
+	Name                string                          `json:"name"`
+	SourceID            string                          `json:"source_id"`
+	SourceName          string                          `json:"source_name"`
+	Topic               string                          `json:"topic"`
+	Tag                 string                          `json:"tag"`
+	GroupName           string                          `json:"group_name"`
+	ValidateRegex       string                          `json:"validate_regex"`
+	ExtractRegex        string                          `json:"extract_regex"`
+	ExtractField        string                          `json:"extract_field"`
 	ExtractRules        []subscription_rule.ExtractRule `json:"extract_rules"`
-	TemplateID          string `json:"template_id"`
-	TemplateName        string `json:"template_name"`
-	TemplateContentType string `json:"template_content_type"`
-	Status              string `json:"status"`
-	TotalConsumed       int    `json:"total_consumed"`
-	TotalSent           int    `json:"total_sent"`
-	TotalFailed         int    `json:"total_failed"`
-	LastConsumeTime     string `json:"last_consume_time"`
-	CreatedOn           string `json:"created_on"`
+	TemplateID          string                          `json:"template_id"`
+	TemplateName        string                          `json:"template_name"`
+	TemplateContentType string                          `json:"template_content_type"`
+	Status              string                          `json:"status"`
+	TotalConsumed       int                             `json:"total_consumed"`
+	TotalSent           int                             `json:"total_sent"`
+	TotalFailed         int                             `json:"total_failed"`
+	LastConsumeTime     string                          `json:"last_consume_time"`
+	CreatedOn           string                          `json:"created_on"`
 }
 
 func normalizeTemplateContentType(v string) string {
@@ -209,7 +209,7 @@ func (s *SubscriptionService) Edit(id string, req EditSubscriptionRequest) error
 }
 
 // Delete 删除订阅
-func (s *SubscriptionService) Delete(id string) error {
+func (s *SubscriptionService) Archive(id string) error {
 	sub := models.Subscription{}
 	if err := sub.GetByUUID(id); err != nil {
 		return err
@@ -220,7 +220,7 @@ func (s *SubscriptionService) Delete(id string) error {
 		return fmt.Errorf("订阅正在运行中，请先停止后再删除")
 	}
 
-	return models.DeleteSubscription(id)
+	return models.ArchiveSubscription(id)
 }
 
 // GetByID 根据 ID 获取订阅

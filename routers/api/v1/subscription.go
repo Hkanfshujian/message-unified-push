@@ -1,12 +1,12 @@
 package v1
 
 import (
-	"ops-message-unified-push/service/subscription_rule"
 	"net/http"
-	"strconv"
 	"ops-message-unified-push/pkg/app"
 	"ops-message-unified-push/pkg/e"
+	"ops-message-unified-push/service/subscription_rule"
 	"ops-message-unified-push/service/subscription_service"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -87,7 +87,7 @@ func (c *SubscriptionController) EditSubscription(ctx *gin.Context) {
 }
 
 // DeleteSubscription 删除订阅
-func (c *SubscriptionController) DeleteSubscription(ctx *gin.Context) {
+func (c *SubscriptionController) ArchiveSubscription(ctx *gin.Context) {
 	var (
 		appG = app.Gin{C: ctx}
 	)
@@ -95,7 +95,7 @@ func (c *SubscriptionController) DeleteSubscription(ctx *gin.Context) {
 	id := ctx.Param("id")
 
 	service := subscription_service.SubscriptionService{}
-	err := service.Delete(id)
+	err := service.Archive(id)
 	if err != nil {
 		appG.CResponse(http.StatusInternalServerError, e.GetMsg(e.ERROR_DELETE_SUBSCRIPTION_FAIL), nil)
 		return
@@ -155,20 +155,20 @@ func (c *SubscriptionController) GetSubscriptionByID(ctx *gin.Context) {
 		return
 	}
 	appG.CResponse(http.StatusOK, "ok", map[string]interface{}{
-		"id":                     subscription.ID,
-		"source_id":              subscription.SourceID,
-		"name":                   subscription.Name,
-		"topic":                  subscription.Topic,
-		"tag":                    subscription.Tag,
-		"group_name":             subscription.GroupName,
-		"validate_regex":         subscription.ValidateRegex,
-		"extract_regex":          subscription.ExtractRegex,
-		"extract_field":          subscription.ExtractField,
-		"extract_rules":          subscription_rule.ParseStoredExtractRules(subscription.ExtractRegex, subscription.ExtractField),
-		"template_id":            subscription.TemplateID,
-		"consume_mode":           subscription.ConsumeMode,
-		"template_content_type":  subscription.ConsumeMode,
-		"status":                 subscription.Status,
+		"id":                    subscription.ID,
+		"source_id":             subscription.SourceID,
+		"name":                  subscription.Name,
+		"topic":                 subscription.Topic,
+		"tag":                   subscription.Tag,
+		"group_name":            subscription.GroupName,
+		"validate_regex":        subscription.ValidateRegex,
+		"extract_regex":         subscription.ExtractRegex,
+		"extract_field":         subscription.ExtractField,
+		"extract_rules":         subscription_rule.ParseStoredExtractRules(subscription.ExtractRegex, subscription.ExtractField),
+		"template_id":           subscription.TemplateID,
+		"consume_mode":          subscription.ConsumeMode,
+		"template_content_type": subscription.ConsumeMode,
+		"status":                subscription.Status,
 	})
 }
 
@@ -193,4 +193,3 @@ func (c *SubscriptionController) TestSubscriptionRegex(ctx *gin.Context) {
 
 	appG.CResponse(http.StatusOK, "ok", result)
 }
-

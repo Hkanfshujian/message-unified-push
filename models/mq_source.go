@@ -11,9 +11,10 @@ import (
 // MQSource 消息队列数据源
 type MQSource struct {
 	UUIDModel
-	Name           string    `json:"name" gorm:"type:varchar(200);not null"`
-	Type           string    `json:"type" gorm:"type:varchar(50);not null"` // rocketmq/kafka/rabbitmq
-	Enabled        int       `json:"enabled" gorm:"default:1"`              // 0-禁用 1-启用
+	SoftDeleteModel
+	Name    string `json:"name" gorm:"type:varchar(200);not null"`
+	Type    string `json:"type" gorm:"type:varchar(50);not null"` // rocketmq/kafka/rabbitmq
+	Enabled int    `json:"enabled" gorm:"default:1"`              // 0-禁用 1-启用
 
 	// RocketMQ 配置
 	NamesrvAddr string `json:"namesrv_addr" gorm:"type:varchar(500)"` // NameServer 地址
@@ -30,14 +31,20 @@ type MQSource struct {
 }
 
 // GenerateMQSourceUniqueID 生成唯一ID: MS + 10位随机
-func GenerateMQSourceUniqueID() string {
-	newUUID := util.GenerateUniqueID()
-	return fmt.Sprintf("MS%s", newUUID)
+func GenerateMQSourceUniqueID() (string, error) {
+	newUUID, err := util.GenerateUniqueID()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("MS%s", newUUID), nil
 }
 
 // AddMQSource 添加消息队列数据源
 func AddMQSource(name, mqType, namesrvAddr, accessKey, secretKey, createdBy string) (string, error) {
-	newUUID := GenerateMQSourceUniqueID()
+	newUUID, err := GenerateMQSourceUniqueID()
+	if err != nil {
+		return "", err
+	}
 	source := MQSource{
 		UUIDModel: UUIDModel{
 			ID:         newUUID,
@@ -157,8 +164,8 @@ func UpdateMQSource(id string, data map[string]interface{}) error {
 }
 
 // DeleteMQSource 删除数据源
-func DeleteMQSource(id string) error {
-	return db.Where("id = ?", id).Delete(&MQSource{}).Error
+func ArchiveMQSource(id string) error {
+	return db.Unscoped().Where("id = ?", id).Delete(&MQSource{}).Error
 }
 
 // UpdateMQSourceTestStatus 更新测试状态
@@ -200,6 +207,7 @@ func GetMQSourceBindingCounts(sourceIDs []string) (map[string]int64, error) {
 	var rows []row
 	err := db.Table(GetSchema(Subscription{})).
 		Select("source_id, COUNT(*) as cnt").
+		Where("deleted_at IS NULL").
 		Where("source_id IN ?", sourceIDs).
 		Group("source_id").
 		Scan(&rows).Error
@@ -217,4 +225,3 @@ func (s *MQSource) TestConnection() error {
 	// TODO: Phase 2 实现真实连接测试
 	return nil
 }
-

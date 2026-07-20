@@ -1,25 +1,28 @@
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Switch } from '@/components/ui/switch'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
-import EmptyTableState from '@/components/ui/EmptyTableState.vue'
-import Pagination from '@/components/ui/Pagination.vue'
-import ClickableTruncate from '@/components/ui/ClickableTruncate.vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { Download, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import AddCronMessages from './AddCronMessages.vue'
 import EditCronMessages from './EditCronMessages.vue'
-import { toast } from 'vue-sonner'
-
-import { useRoute, useRouter } from 'vue-router';
-import { request } from '@/api/api';
-// @ts-ignore
-import { getPageSize } from '@/util/pageUtils';
+import AppEmptyState from '@/components/ui/AppEmptyState.vue'
+import AppFormDrawer from '@/components/ui/AppFormDrawer.vue'
+import AppPagination from '@/components/ui/AppPagination.vue'
+import AppRowActions from '@/components/ui/AppRowActions.vue'
+import AppTable, { type AppTableColumn } from '@/components/ui/AppTable.vue'
+import AppTableToolbar from '@/components/ui/table-toolbar/AppTableToolbar.vue'
+import AppTruncate from '@/components/ui/AppTruncate.vue'
+import { useRoute, useRouter } from 'vue-router'
+import { scheduledMessagesApi } from '@/api/scheduledMessages'
+import { useRbacStore } from '@/store'
+import { getPageSize } from '@/util/pageUtils'
+import { createTableToolbarState, getVisibleToolbarColumns } from '@/components/ui/table-toolbar/tableToolbar'
+import type { TableToolbarColumn } from '@/components/ui/table-toolbar/types'
 import { appendDateRangeQuery, pickDateRangeQuery } from '@/util/routeQuery'
+import { downloadBlob, notifyError, notifySuccess } from '@/util/uiFeedback'
+import { zhCN } from '@/locales/zh-CN'
 
+const messages = zhCN.cronMessages
 
-interface CronMessageItem {
+interface CronMessageItem extends Record<string, unknown> {
   id: string
   name: string
   cron: string
@@ -35,52 +38,72 @@ interface CronMessageItem {
   next_time?: string
 }
 
-const route = useRoute();
-const router = useRouter();
+const route = useRoute()
+const router = useRouter()
+const rbacStore = useRbacStore()
 
-let state = reactive({
+const state = reactive({
   tableData: [] as CronMessageItem[],
   total: 0,
   currPage: 1,
   pageSize: getPageSize(),
   search: '',
-  optionValue: '',
+  loading: false
 })
 
-// 状态过滤
 const selectedStatus = ref('all')
-
-
-// 新增定时消息 Dialog 状态
 const isAddCronMessageDialogOpen = ref(false)
-
-// 编辑定时消息 Dialog 状态
 const isEditCronMessageDialogOpen = ref(false)
 const editCronMessageData = ref<CronMessageItem | null>(null)
 const isDeleteConfirmOpen = ref(false)
 const deleteConfirmInput = ref('')
 const deleteTarget = ref<CronMessageItem | null>(null)
 
-// 处理保存新定时消息
-const handleSaveCronMessage = (_data: any) => {
-  // 保存成功后刷新列表
-  queryListDataWithStatus()
+const columns: AppTableColumn[] = [
+  { prop: 'id', label: 'ID', width: 120 },
+  { prop: 'name', label: '名称', minWidth: 180 },
+  { prop: 'template', label: '模板', minWidth: 180 },
+  { prop: 'channels', label: '渠道', minWidth: 220 },
+  { prop: 'cron', label: 'Cron 表达式', minWidth: 150 },
+  { prop: 'next_time', label: '下次执行时间', minWidth: 170 },
+  { prop: 'created_on', label: '创建时间', minWidth: 170 },
+  { prop: 'actions', label: '操作/状态', width: 220, align: 'center', fixed: 'right' }
+]
+
+const toolbarColumns: TableToolbarColumn[] = columns.map(column => ({
+  key: column.prop || column.label,
+  label: column.label,
+  required: column.prop === 'id' || column.prop === 'actions'
+}))
+
+const tableToolbar = reactive(createTableToolbarState(toolbarColumns))
+const visibleColumns = computed(() => getVisibleToolbarColumns(columns, tableToolbar.visibleColumns))
+const refreshTable = async () => {
+  if (tableToolbar.refreshing) return
+  tableToolbar.refreshing = true
+  try {
+    await reloadList()
+  } finally {
+    tableToolbar.refreshing = false
+  }
 }
 
-// 总页数
-const totalPages = computed(() => Math.ceil(state.total / state.pageSize))
+const statusOptions = [
+  { value: 'all', label: '全部状态' },
+  { value: '1', label: '启用' },
+  { value: '0', label: '停用' }
+]
 
 const parsePositiveNumber = (value: unknown, fallback: number) => {
   const n = Number(value)
-  if (!Number.isFinite(n) || n <= 0) return fallback
-  return Math.floor(n)
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback
 }
 
 const buildRouteQuery = () => {
   const nextQuery: Record<string, string> = {}
   const name = state.search.trim()
   if (name) nextQuery.name = name
-  if (selectedStatus.value && selectedStatus.value !== 'all') nextQuery.status = selectedStatus.value
+  if (selectedStatus.value !== 'all') nextQuery.status = selectedStatus.value
   nextQuery.page = String(state.currPage)
   nextQuery.size = String(state.pageSize)
   appendDateRangeQuery(nextQuery, route.query as Record<string, unknown>)
@@ -91,16 +114,68 @@ const syncRouteQuery = async () => {
   await router.replace({ path: route.path, query: buildRouteQuery() })
 }
 
-// 打开编辑定时消息Dialog
+const queryListData = async () => {
+  state.loading = true
+  try {
+    const params: Record<string, unknown> = {
+      page: state.currPage,
+      size: state.pageSize,
+      name: state.search.trim()
+    }
+    if (selectedStatus.value !== 'all') params.status = selectedStatus.value
+    const { startTime, endTime } = pickDateRangeQuery(route.query as Record<string, unknown>)
+    if (startTime) params.start_time = startTime
+    if (endTime) params.end_time = endTime
+    const rsp = await scheduledMessagesApi.list(params)
+    if (rsp?.data?.code === 200) {
+      state.tableData = rsp.data.data?.lists || []
+      state.total = rsp.data.data?.total || 0
+      return
+    }
+    notifyError(rsp?.data?.msg || '获取定时消息列表失败')
+  } catch (error) {
+    notifyError('获取定时消息列表时发生错误')
+  } finally {
+    state.loading = false
+  }
+}
+
+const reloadList = async () => {
+  await syncRouteQuery()
+  await queryListData()
+}
+
+const filterFunc = async () => {
+  state.currPage = 1
+  await reloadList()
+}
+
+const resetFilters = async () => {
+  state.search = ''
+  selectedStatus.value = 'all'
+  state.currPage = 1
+  await reloadList()
+}
+
+const handlePageChange = async ({ page, pageSize }: { page: number; pageSize: number }) => {
+  state.currPage = page
+  state.pageSize = pageSize
+  await reloadList()
+}
+
 const openEditCronMessageDialog = (cronMessage: CronMessageItem) => {
   editCronMessageData.value = cronMessage
   isEditCronMessageDialogOpen.value = true
 }
 
-// 处理编辑定时消息保存
-const handleEditCronMessage = (_data: any) => {
-  // 保存成功后刷新列表
-  queryListDataWithStatus()
+const handleSaveCronMessage = async () => {
+  isAddCronMessageDialogOpen.value = false
+  await queryListData()
+}
+
+const handleEditCronMessage = async () => {
+  isEditCronMessageDialogOpen.value = false
+  await queryListData()
 }
 
 const openDeleteConfirm = (cronMessage: CronMessageItem) => {
@@ -120,79 +195,33 @@ const isDeleteMatch = computed(() => {
   return deleteConfirmInput.value.trim().toLowerCase() === target.trim().toLowerCase() && target.length > 0
 })
 
-const showDeleteError = computed(() => {
-  return deleteConfirmInput.value.length > 0 && !isDeleteMatch.value
-})
-
-// 处理查看日志
 const handleViewLogs = (cronMessage: CronMessageItem) => {
-  // 跳转到定时消息日志页面，携带cronMessageId参数
   router.push(`/logs/task?taskid=${cronMessage.id}`)
 }
 
-// 切换状态
 const toggleStatus = async (cronMessage: CronMessageItem) => {
   const prevStatus = cronMessage.enable
   const newStatus = prevStatus ? 0 : 1
+  const permission = newStatus === 1 ? 'message:cron:start' : 'message:cron:stop'
+  if (!rbacStore.hasPermission(permission)) return
   cronMessage.enable = newStatus
-  const rsp = await request.post('/cronmessages/edit', cronMessage)
-  if (rsp.data.code === 200) {
-    toast.success(newStatus === 1 ? `已启用定时消息「${cronMessage.name}」` : `已停用定时消息「${cronMessage.name}」`)
+  const rsp = await scheduledMessagesApi.setEnabled(cronMessage.id, newStatus === 1)
+  if (rsp?.data?.code === 200) {
+    notifySuccess(newStatus === 1 ? `已启用定时消息「${cronMessage.name}」` : `已停用定时消息「${cronMessage.name}」`)
     return
   }
   cronMessage.enable = prevStatus
-  toast.error(rsp.data.msg || '更新定时消息状态失败')
+  notifyError(rsp?.data?.msg || '更新定时消息状态失败')
 }
 
-const changePage = async (page: number) => {
-  if (page >= 1 && page <= totalPages.value) {
-    state.currPage = page
-    await syncRouteQuery()
-    await queryListDataWithStatus()
-  }
-}
-
-const handlePageSizeChange = async (size: number) => {
-  if (size <= 0) return
-  state.pageSize = size
-  state.currPage = 1
-  await syncRouteQuery()
-  await queryListDataWithStatus()
-}
-
-//触发过滤筛选
-const filterFunc = async () => {
-  state.currPage = 1
-  await syncRouteQuery()
-  await queryListDataWithStatus()
-}
-
-// 查询数据（包含状态过滤）
-const queryListDataWithStatus = async () => {
-  const statusParam = selectedStatus.value === 'all' ? '' : selectedStatus.value
-  await queryListData(state.currPage, state.pageSize, state.search, statusParam)
-}
-
-const queryListData = async (page: number, size: number, name = '', status = '') => {
-  const params: any = { page, size, name }
-  if (status !== '') {
-    params.status = status
-  }
-  const { startTime, endTime } = pickDateRangeQuery(route.query as Record<string, unknown>)
-  if (startTime) params.start_time = startTime
-  if (endTime) params.end_time = endTime
-  const rsp = await request.get('/cronmessages/list', { params })
-  state.tableData = rsp?.data?.data?.lists || []
-  state.total = rsp?.data?.data?.total || 0
-}
-
-// 删除定时消息
 const handleDelete = async (id: string) => {
-  const rsp = await request.post('/cronmessages/delete', { id: id });
-  if (rsp.status == 200 && await rsp.data.code == 200) {
-    toast.success(rsp.data.msg);
-    await queryListDataWithStatus()
+  const rsp = await scheduledMessagesApi.remove(id)
+  if (rsp?.data?.code === 200) {
+    notifySuccess(rsp.data.msg || '删除成功')
+    await queryListData()
+    return
   }
+  notifyError(rsp?.data?.msg || '删除失败')
 }
 
 const handleConfirmDelete = async () => {
@@ -201,6 +230,38 @@ const handleConfirmDelete = async () => {
   closeDeleteConfirm()
 }
 
+const handleSendNow = async (cronMessage: CronMessageItem) => {
+  const rsp = await scheduledMessagesApi.sendNow({
+    id: cronMessage.id,
+    template_id: cronMessage.template_id,
+    name: cronMessage.name,
+    title: cronMessage.name
+  })
+  if (rsp?.data?.code === 200) {
+    notifySuccess(rsp.data.msg || '发送成功')
+    return
+  }
+  notifyError(rsp?.data?.msg || '发送失败')
+}
+
+const handleExport = async () => {
+  try {
+    const params: Record<string, unknown> = {
+      page: state.currPage,
+      size: state.pageSize,
+      name: state.search.trim()
+    }
+    if (selectedStatus.value !== 'all') params.status = selectedStatus.value
+    const { startTime, endTime } = pickDateRangeQuery(route.query as Record<string, unknown>)
+    if (startTime) params.start_time = startTime
+    if (endTime) params.end_time = endTime
+    const rsp = await scheduledMessagesApi.export(params)
+    downloadBlob(rsp.data, `cronmessages-${new Date().toISOString().slice(0, 10)}.csv`)
+    notifySuccess('定时任务导出成功')
+  } catch (error) {
+    notifyError('定时任务导出失败')
+  }
+}
 
 onMounted(async () => {
   state.search = route.query.name?.toString() || ''
@@ -208,160 +269,98 @@ onMounted(async () => {
   state.currPage = parsePositiveNumber(route.query.page, 1)
   state.pageSize = parsePositiveNumber(route.query.size, state.pageSize)
   await syncRouteQuery()
-  await queryListDataWithStatus()
+  await queryListData()
 })
-
 </script>
 
 <template>
-  <div class="space-y-2">
-    <div class="toolbar">
-      <div class="search-group">
-        <Input
-          v-model="state.search"
-          placeholder="搜索..."
-          class="search-input"
-          @keyup.enter="filterFunc"
-          @blur="filterFunc"
-        />
+  <div class="space-y-4">
+    <el-card shadow="never">
+      <div class="page-toolbar">
+        <el-input v-model="state.search" clearable :placeholder="messages.searchPlaceholder" class="w-full md:!w-[260px]" @keyup.enter="filterFunc">
+          <template #prefix><Search /></template>
+        </el-input>
+        <el-select v-model="selectedStatus" class="w-full md:!w-[140px]" @change="filterFunc">
+          <el-option v-for="option in statusOptions" :key="option.value" :label="option.label" :value="option.value" />
+        </el-select>
+        <el-button :icon="Search" type="primary" @click="filterFunc">{{ messages.search }}</el-button>
+        <el-button :icon="Refresh" @click="resetFilters">{{ messages.reset }}</el-button>
+        <div class="flex-1" />
+        <el-button :icon="Download" @click="handleExport">{{ messages.export }}</el-button>
+        <el-button v-permission="'message:cron:add'" :icon="Plus" type="primary" @click="isAddCronMessageDialogOpen = true">{{ messages.addTask }}</el-button>
       </div>
-      <Dialog v-model:open="isAddCronMessageDialogOpen">
-        <DialogTrigger as-child>
-          <Button v-permission="'message:cron:add'" variant="default" class="primary-btn">
-            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-            </svg>
-            新增任务
-          </Button>
-        </DialogTrigger>
+    </el-card>
 
-        <DialogContent class="w-[500px] max-w-[90vw]">
-          <DialogHeader>
-            <DialogTitle>新增定时消息</DialogTitle>
-          </DialogHeader>
-
-          <div class="px-4 pb-4">
-            <AddCronMessages v-model:open="isAddCronMessageDialogOpen" @save="handleSaveCronMessage"
-              @cancel="() => isAddCronMessageDialogOpen = false" />
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
-
-    <div class="rounded border weak-divider overflow-x-auto">
-      <div class="min-w-full">
-        <Table class="data-table border-collapse">
-          <TableHeader>
-            <TableRow>
-              <TableHead class="w-20">ID</TableHead>
-              <TableHead>名称</TableHead>
-              <TableHead>模板</TableHead>
-              <TableHead>渠道</TableHead>
-              <TableHead>Cron表达式</TableHead>
-              <TableHead>下次执行时间</TableHead>
-              <TableHead>创建时间</TableHead>
-              <TableHead class="text-center">操作</TableHead>
-            </TableRow>
-          </TableHeader>
-
-          <TableBody>
-            <!-- 空数据展示 -->
-            <TableRow v-if="(state.tableData || []).length === 0">
-              <TableCell colspan="8" class="empty-state">
-                <EmptyTableState title="暂无定时消息" description="还没有配置任何定时消息，请先添加定时消息" />
-              </TableCell>
-            </TableRow>
-
-            <!-- 数据行 -->
-            <TableRow v-for="cronMessage in (state.tableData || [])" :key="cronMessage.id">
-              <TableCell>{{ cronMessage.id }}</TableCell>
-              <TableCell>
-                <ClickableTruncate :text="cronMessage.name" wrapper-class="max-w-[180px] sm:max-w-[260px]" preview-title="名称" />
-              </TableCell>
-              <TableCell>
-                <ClickableTruncate :text="cronMessage.template_name || cronMessage.template_id" wrapper-class="max-w-[180px] sm:max-w-[240px]" preview-title="模板" />
-              </TableCell>
-              <TableCell>
-                <ClickableTruncate :text="(cronMessage.channel_names || []).join('、')" wrapper-class="max-w-[220px] sm:max-w-[320px]" preview-title="渠道" />
-              </TableCell>
-              <TableCell>
-                <code class="max-w-[90px] sm:max-w-[9px] rounded text-sm font-mono bg-muted text-foreground border border-border">
-                  {{ cronMessage.cron }}
-                </code>
-              </TableCell>
-              <TableCell>{{ cronMessage.next_time || '-' }}</TableCell>
-              <TableCell>{{ cronMessage.created_on }}</TableCell>
-              <!-- <TableCell class="text-center">
-                <Badge :class="cronMessage.status === 1 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'">
-                  {{ getStatusText(cronMessage.status) }}
-                </Badge>
-              </TableCell> -->
-              <TableCell class="text-center space-x-2">
-                <Button size="sm" variant="outline" @click="handleViewLogs(cronMessage)">日志</Button>
-                <Button v-permission="'message:cron:edit'" size="sm" variant="outline" @click="openEditCronMessageDialog(cronMessage)">编辑</Button>
-                <Button v-permission="'message:cron:delete'" size="sm" variant="outline" class="text-red-500 border-red-300 hover:bg-red-50 
-                  hover:border-red-400 hover:text-red-600 hover:shadow-md
-                   transition-all duration-[var(--motion-fast)]" @click="openDeleteConfirm(cronMessage)">删除</Button>
-                <Switch v-permission="'message:cron:edit'" :model-value="cronMessage.enable === 1" @update:model-value="toggleStatus(cronMessage)" />
-
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+    <el-card shadow="never" body-class="!p-0" :class="tableToolbar.focused ? 'app-table-focused-card' : ''">
+      <AppTableToolbar
+        :title="messages.title"
+        :columns="toolbarColumns"
+        v-model:visible-columns="tableToolbar.visibleColumns"
+        v-model:focused="tableToolbar.focused"
+        :refreshing="tableToolbar.refreshing || state.loading"
+        @refresh="refreshTable"
+      >
+        <template #summary>
+          <span class="text-xs text-muted-foreground">{{ messages.totalPrefix }}{{ state.total }}{{ messages.itemUnit }}</span>
+        </template>
+      </AppTableToolbar>
+      <AppTable :data="state.tableData" :columns="visibleColumns" :loading="state.loading" :empty-text="messages.empty">
+        <template #name="{ row }">
+          <AppTruncate :text="row.name" :title="messages.name" />
+        </template>
+        <template #template="{ row }">
+          <AppTruncate :text="row.template_name || row.template_id" :title="messages.template" />
+        </template>
+        <template #channels="{ row }">
+          <AppTruncate :text="(row.channel_names || []).join('、')" :title="messages.channels" />
+        </template>
+        <template #cron="{ row }">
+          <code class="rounded border border-border bg-muted px-2 py-1 text-sm font-mono text-foreground">{{ row.cron }}</code>
+        </template>
+        <template #next_time="{ row }">
+          {{ row.next_time || '-' }}
+        </template>
+        <template #actions="{ row }">
+          <AppRowActions :actions="[
+            { key: 'edit', label: messages.edit, kind: 'write', permission: 'message:cron:edit', onClick: () => openEditCronMessageDialog(row as CronMessageItem) },
+            { key: 'stop', label: messages.disable, kind: 'write', permission: 'message:cron:stop', visible: row.enable === 1, danger: true, onClick: () => toggleStatus(row as CronMessageItem) },
+            { key: 'start', label: messages.enable, kind: 'write', permission: 'message:cron:start', visible: row.enable !== 1, onClick: () => toggleStatus(row as CronMessageItem) },
+            { key: 'delete', label: messages.delete, kind: 'write', permission: 'message:cron:delete', danger: true, onClick: () => openDeleteConfirm(row as CronMessageItem) },
+            { key: 'send', label: messages.sendNow, kind: 'write', permission: 'message:cron:sendnow', onClick: () => handleSendNow(row as CronMessageItem) },
+            { key: 'logs', label: messages.logs, kind: 'view', permission: 'message:sendlogs:view', onClick: () => handleViewLogs(row as CronMessageItem) }
+          ]" />
+        </template>
+        <template #empty>
+          <AppEmptyState :description="messages.empty" />
+        </template>
+      </AppTable>
+      <div class="px-4">
+        <AppPagination v-model:current-page="state.currPage" v-model:page-size="state.pageSize" :total="state.total" @change="handlePageChange" />
       </div>
-    </div>
+    </el-card>
 
-    <!-- 分页 -->
-    <div class="pagination">
-      <Pagination
-        :total="state.total"
-        :current-page="state.currPage"
-        :page-size="state.pageSize"
-        @page-change="changePage"
-        @page-size-change="handlePageSizeChange"
-      />
-    </div>
+    <AppFormDrawer v-model="isAddCronMessageDialogOpen" :title="messages.addTitle" size="620px" body-mode="managed" :show-footer="false">
+      <AddCronMessages v-model:open="isAddCronMessageDialogOpen" @save="handleSaveCronMessage" @cancel="isAddCronMessageDialogOpen = false" />
+    </AppFormDrawer>
 
-    <!-- 编辑定时消息Dialog -->
-    <Dialog v-model:open="isEditCronMessageDialogOpen">
-      <DialogContent class="w-[500px] max-w-[90vw] max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader class="flex-shrink-0">
-          <DialogTitle>编辑定时消息</DialogTitle>
-        </DialogHeader>
+    <AppFormDrawer v-model="isEditCronMessageDialogOpen" :title="messages.editTitle" size="620px" body-mode="managed" :show-footer="false">
+      <EditCronMessages v-model:open="isEditCronMessageDialogOpen" :cron-message="editCronMessageData" @save="handleEditCronMessage" @cancel="isEditCronMessageDialogOpen = false" />
+    </AppFormDrawer>
 
-        <div class="px-4 pb-4 flex-1 overflow-y-auto">
-          <EditCronMessages v-model:open="isEditCronMessageDialogOpen" :cron-message="editCronMessageData"
-            @save="handleEditCronMessage" />
+    <el-dialog v-model="isDeleteConfirmOpen" :title="messages.confirmDeleteTitle" width="min(420px, calc(100vw - 24px))" class="app-nested-dialog" append-to-body @closed="closeDeleteConfirm">
+      <div class="space-y-2">
+        <div class="text-sm text-muted-foreground">
+          {{ messages.confirmNamePrefix }}
+          <span v-if="deleteTarget?.name" class="text-red-500 font-semibold mx-1">{{ deleteTarget.name }}</span>
+          {{ messages.confirmNameSuffix }}
         </div>
-      </DialogContent>
-    </Dialog>
-
-    <Dialog :open="isDeleteConfirmOpen" @update:open="(value) => value ? (isDeleteConfirmOpen = true) : closeDeleteConfirm()">
-      <DialogContent class="w-[420px] max-w-[90vw]">
-        <DialogHeader>
-          <DialogTitle>确认删除定时消息</DialogTitle>
-        </DialogHeader>
-        <div class="space-y-2">
-          <div class="text-sm text-muted-foreground">
-            请输入要删除的定时消息名称
-            <span v-if="deleteTarget?.name" class="text-red-500 font-semibold mx-1">{{ deleteTarget.name }}</span>
-            以确认操作
-          </div>
-          <Input
-            v-model="deleteConfirmInput"
-            :max-length="50"
-            placeholder="请输入定时消息名称"
-            class="confirm-delete-input"
-          />
-          <div v-if="showDeleteError" class="error-tip">名称不匹配，请重新输入</div>
-        </div>
-        <DialogFooter class="flex justify-end gap-2 mt-4">
-          <Button type="button" class="cancel-btn" @click="closeDeleteConfirm">取消</Button>
-          <Button type="button" class="danger-btn" :disabled="!isDeleteMatch" @click="handleConfirmDelete">
-            确认删除
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <el-input v-model="deleteConfirmInput" maxlength="50" :placeholder="messages.namePlaceholder" />
+        <div v-if="deleteConfirmInput && !isDeleteMatch" class="text-xs text-red-500">{{ messages.nameMismatch }}</div>
+      </div>
+      <template #footer>
+        <el-button @click="closeDeleteConfirm">{{ messages.cancel }}</el-button>
+        <el-button type="danger" :disabled="!isDeleteMatch" @click="handleConfirmDelete">{{ messages.confirmDelete }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>

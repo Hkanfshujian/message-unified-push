@@ -24,6 +24,7 @@ logs/*
 
 # Dependency directories (remove the comment below to include it)
 vendor/
+demo/
 
 # Go workspace file
 go.work
@@ -33,13 +34,15 @@ go.work
 /web/node_modules
 /web/.vite
 /web/.vscode
+/web/dist
+*.log
+.env*
 
 # Project ignore
 /test
 /conf/app.ini
 /runtime
 .idea/
-.release_version
 conf/database.db
 tmp/
 # temp artifacts
@@ -49,3 +52,8 @@ tmp/
 .tmp-go-modcache/
 .tmp-go-path/
 .tmp-go-bin/
+
+# UmaDev runtime data
+.umadev/
+output/
+opencode.json

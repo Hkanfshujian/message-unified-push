@@ -1,21 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { CONSTANT } from '@/constant'
-import { createValidationState } from '@/util/validation'
-// import { validateForm, createValidationState, type InputConfig } from '@/util/validation'
-import { toast } from 'vue-sonner'
-import { request } from '@/api/api'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger
-} from '@/components/ui/tooltip'
+import { createValidationState, validateForm, type InputConfig } from '@/util/validation'
+import { channelsApi } from '@/api/channels'
+import { notifyError, notifySuccess } from '@/util/uiFeedback'
+import { zhCN } from '@/locales/zh-CN'
 import {
   MailOutlined,
   ThunderboltOutlined,
@@ -30,6 +19,8 @@ import {
   SafetyCertificateOutlined,
   AppstoreOutlined
 } from '@ant-design/icons-vue'
+
+const messages = zhCN.waysForm
 
 // 组件props
 interface Props {
@@ -63,6 +54,11 @@ const channelMode = ref(channelModeOptions[0]?.value || '')
 const currentChannelConfig = computed(() => {
   return waysConfigMap.find(item => item.type === channelMode.value) || null
 })
+
+const channelNameInput = computed(() => currentChannelConfig.value?.inputs?.find((input: any) => input.col === 'name'))
+const channelAuthInputs = computed(() => currentChannelConfig.value?.inputs?.filter((input: any) => input.col !== 'name') || [])
+const sensitiveInputPattern = /(passw|passwd|password|secret|token|access[_-]?key|push[_-]?key|bot[_-]?token|corp[_-]?secret|appsecret|\bkey\b|\biv\b)/i
+const isSensitiveInput = (input: any) => sensitiveInputPattern.test(`${input.col || ''} ${input.label || ''} ${input.subLabel || ''}`)
 
 // 表单数据
 const formData = ref<Record<string, any>>({})
@@ -135,50 +131,45 @@ const initFormData = () => {
   formData.value = newFormData
 }
 
-// // 获取所有输入字段配置
-// const getAllInputConfigs = (): InputConfig[] => {
-//   const config = currentChannelConfig.value
-//   if (!config) return []
+const getAllInputConfigs = (): InputConfig[] => {
+  const config = currentChannelConfig.value
+  if (!config) return []
 
-//   const configs: InputConfig[] = []
+  const configs: InputConfig[] = []
 
-//   // 基本输入字段
-//   if (config.inputs) {
-//     configs.push(...config.inputs.map((input: any) => ({
-//       col: input.col,
-//       label: input.label,
-//       subLabel: input.subLabel,
-//       type: input.type,
-//       required: input.required !== false,
-//       minLength: input.minLength,
-//       maxLength: input.maxLength
-//     })))
-//   }
+  if (config.inputs) {
+    configs.push(...config.inputs.map((input: any) => ({
+      col: input.col,
+      label: input.label,
+      subLabel: input.subLabel,
+      type: input.type,
+      required: input.required !== false,
+      minLength: input.minLength,
+      maxLength: input.maxLength
+    })))
+  }
 
-//   // 任务指令输入字段
-//   if (config.taskInsInputs) {
-//     configs.push(...config.taskInsInputs.map((input: any) => ({
-//       col: input.col,
-//       label: input.label,
-//       subLabel: input.subLabel,
-//       type: input.type,
-//       required: input.required !== false,
-//       minLength: input.minLength,
-//       maxLength: input.maxLength
-//     })))
-//   }
+  if (config.taskInsInputs) {
+    configs.push(...config.taskInsInputs.map((input: any) => ({
+      col: input.col,
+      label: input.label,
+      subLabel: input.subLabel,
+      type: input.type,
+      required: input.required !== false,
+      minLength: input.minLength,
+      maxLength: input.maxLength
+    })))
+  }
 
-//   return configs
-// }
+  return configs
+}
 
-// // 校验表单
-// const validateFormData = () => {
-//   const inputConfigs = getAllInputConfigs()
-//   const result = validateForm(formData.value, inputConfigs)
-
-//   validationState.setErrors(result.errors)
-//   return result.isValid
-// }
+const validateFormData = () => {
+  const inputConfigs = getAllInputConfigs()
+  const result = validateForm(formData.value, inputConfigs)
+  validationState.setErrors(result.errors)
+  return result.isValid
+}
 
 // 监听渠道模式变化
 const handleChannelModeChange = () => {
@@ -275,6 +266,7 @@ const getFinalData = () => {
 
 // 测试连接
 const handleTest = async () => {
+  if (!validateFormData()) return
   if (channelMode.value === 'QyWeiXinApp') {
     testRecipientInput.value = ''
     testRecipientDialogOpen.value = true
@@ -289,7 +281,7 @@ const doTestRequest = async () => {
     if (channelMode.value === 'QyWeiXinApp') {
       const toUser = testRecipientOverride.value.trim()
       if (!toUser) {
-        toast.error('测试接收者不能为空')
+        notifyError('测试接收者不能为空')
         return
       }
       let authData: Record<string, any> = {}
@@ -301,33 +293,34 @@ const doTestRequest = async () => {
       authData.to_user = toUser
       postData.auth = JSON.stringify(authData)
     }
-    const rsp = await request.post('/sendways/test', postData, {
-      meta: {
-        silentBizToast: true,
-        silentErrorToast: true
-      }
-    } as any)
+    const rsp = await channelsApi.test(postData)
     if (rsp?.data?.code == 200) {
-      toast.success(rsp.data.msg || '测试成功')
+      notifySuccess(rsp.data.msg || '测试成功')
       return
     }
-    toast.error(rsp?.data?.msg || '测试失败')
+    notifyError(rsp?.data?.msg || '测试失败')
   } catch (error: any) {
-    toast.error(error?.response?.data?.msg || error?.message || '测试请求失败')
+    notifyError(error?.response?.data?.msg || error?.message || '测试请求失败')
   }
 }
 
 const confirmTestRecipient = async () => {
   const recipient = testRecipientInput.value.trim()
   if (!recipient) {
-    toast.error('请输入接收者企微ID')
+    notifyError('请输入接收者企微ID')
     return
   }
   if (recipient.toLowerCase() === 'all' || recipient === '@all') {
+    testRecipientDialogOpen.value = false
     testAllConfirmDialogOpen.value = true
     return
   }
   await submitQyWeiXinAppTest(recipient)
+}
+
+const cancelAllRecipientConfirm = () => {
+  testAllConfirmDialogOpen.value = false
+  testRecipientDialogOpen.value = true
 }
 
 const submitQyWeiXinAppTest = async (recipient: string) => {
@@ -340,26 +333,24 @@ const submitQyWeiXinAppTest = async (recipient: string) => {
 
 // 保存数据
 const handleSave = async () => {
-  // if (!validateFormData()) { return }
+  if (!validateFormData()) return
 
   try {
     const postData = getFinalData()
 
     // 根据模式选择API路径和成功消息
-    const apiUrl = props.mode === 'edit' ? '/sendways/edit' : '/sendways/add'
     const successMessage = props.mode === 'edit' ? '更新渠道成功！' : '添加渠道成功！'
 
-    const rsp = await request.post(apiUrl, postData)
+    const rsp = await (props.mode === 'edit' ? channelsApi.update(postData) : channelsApi.create(postData))
     if (rsp?.data?.code == 200) {
-      toast.success(successMessage)
-      setTimeout(() => {
-        window.location.reload()
-      }, 1000)
+      notifySuccess(successMessage)
+      emit('save', postData)
+      emit('update:open', false)
       return
     }
-    toast.error(rsp?.data?.msg || '保存失败')
+    notifyError(rsp?.data?.msg || '保存失败')
   } catch (error: any) {
-    toast.error(error?.response?.data?.msg || error?.message || '保存请求失败')
+    notifyError(error?.response?.data?.msg || error?.message || '保存请求失败')
   }
 }
 
@@ -389,225 +380,130 @@ const saveButtonText = computed(() => {
 </script>
 
 <template>
-  <div class="w-full h-full flex flex-col">
-    <div class="flex flex-col lg:flex-row gap-6 flex-1">
-      <div v-if="props.mode !== 'edit'" class="lg:w-2/5 w-full">
-        <div
-          class="mt-3 rounded-lg border weak-divider bg-background p-2 max-h-[60vh] overflow-y-auto focus:outline-none"
-          tabindex="0"
-          @keydown="handleChannelListKeydown"
-        >
+  <div class="ways-form">
+    <div class="ways-form-layout" :class="{ 'ways-form-layout-edit': props.mode === 'edit' }">
+      <aside v-if="props.mode !== 'edit'" class="ways-form-nav">
+        <div class="ways-form-nav-header">
+          <h3>{{ messages.channelType }}</h3>
+          <span>{{ channelModeOptions.length }}{{ messages.availableTypeSuffix }}</span>
+        </div>
+        <div class="ways-form-channel-list" tabindex="0" @keydown="handleChannelListKeydown">
           <button
             v-for="(option, index) in channelModeOptions"
             :key="option.value"
             type="button"
-            class="group flex h-9 w-full items-center justify-between rounded-md px-2 text-sm mb-1 last:mb-0"
-            :class="option.value === channelMode
-              ? 'bg-brand text-white'
-              : 'text-foreground hover:bg-muted'"
+            class="ways-form-channel-item"
+            :class="{ 'is-active': option.value === channelMode }"
             @click="selectChannelMode(option.value, index)"
           >
-            <div class="flex items-center gap-2">
-              <div class="w-5 h-5 flex items-center justify-center">
-                <component
-                  :is="getChannelIcon(option.value)"
-                  class="w-5 h-5"
-                  :class="option.value === channelMode ? 'text-white' : 'text-muted-foreground'"
-                />
-              </div>
-              <span>{{ option.label }}</span>
-            </div>
-            <svg
-              v-if="option.value === channelMode"
-              class="h-3.5 w-3.5 text-white"
-              viewBox="0 0 16 16"
-              aria-hidden="true"
-            >
-              <path
-                fill="currentColor"
-                d="M6.173 12.414 2.4 8.64l1.414-1.414L6.173 9.586l6.01-6.01 1.414 1.414-7.424 7.424z"
-              />
-            </svg>
+            <span class="ways-form-channel-icon"><component :is="getChannelIcon(option.value)" /></span>
+            <span class="ways-form-channel-name">{{ option.label }}</span>
+            <span v-if="option.value === channelMode" class="ways-form-channel-check" aria-hidden="true">✓</span>
           </button>
         </div>
-      </div>
+      </aside>
 
-      <div
-        :class="props.mode === 'edit' ? 'w-full' : 'lg:w-3/5 w-full'"
-        class="flex flex-col min-h-0"
-      >
+      <main class="ways-form-main">
         <transition name="fade-config" mode="out-in">
-          <div v-if="currentChannelConfig" :key="channelMode" class="mt-2 lg:mt-0">
-            <div class="mb-4">
-              <div
-                v-if="props.mode === 'edit'"
-                class="flex items-center gap-1.5 text-sm text-foreground"
-              >
-                <span class="font-medium">{{ currentChannelConfig?.label || channelMode }}</span>
-                <span
-                  v-if="currentChannelConfig?.dynamicRecipient?.support"
-                  class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-brand/10 text-brand dark:bg-brand/20 dark:text-brand"
-                >
-                  群发
-                </span>
-              </div>
-              <div v-else>
-                <div class="flex items-center gap-2">
-                  <h3 class="text-base font-semibold text-foreground">
-                    {{ currentChannelConfig?.label || '请选择通道' }}
-                  </h3>
-                  <span
-                    v-if="currentChannelConfig?.dynamicRecipient?.support"
-                    class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-brand/10 text-brand dark:bg-brand/20 dark:text-brand"
-                  >
-                    群发
-                  </span>
+          <div v-if="currentChannelConfig" :key="channelMode" class="ways-form-content">
+            <section v-if="channelNameInput || channelAuthInputs.length" class="ways-form-section">
+              <header class="ways-form-section-header">
+                <div class="ways-form-section-title"><span class="ways-form-identity-icon"><component :is="getChannelIcon(channelMode)" /></span><h4>{{ currentChannelConfig.label || channelMode }}{{ messages.configurationSuffix }}</h4><code>{{ channelMode }}</code><span v-if="currentChannelConfig.dynamicRecipient?.support" class="ways-form-capability">{{ messages.groupSendSupported }}</span></div>
+                <p>{{ messages.configurationDescription }}</p>
+              </header>
+              <div class="ways-form-section-body ways-form-fields">
+                <div v-if="channelNameInput" class="ways-form-field ways-form-field-name">
+                  <label :for="channelNameInput.col">{{ channelNameInput.subLabel || channelNameInput.label }}</label>
+                  <el-input
+                    :id="channelNameInput.col"
+                    v-model="formData[channelNameInput.col]"
+                    clearable
+                    :placeholder="channelNameInput.desc || channelNameInput.placeholder || channelNameInput.subLabel || channelNameInput.label"
+                    :class="validationState.errors.value[channelNameInput.col] ? 'is-error' : ''"
+                    @input="() => validationState.clearFieldError(channelNameInput.col)"
+                  />
+                  <div v-if="validationState.errors.value[channelNameInput.col]" class="app-form-error">{{ validationState.errors.value[channelNameInput.col] }}</div>
                 </div>
-                <p class="mt-1 text-xs text-muted-foreground">
-                  根据选择的发信通道配置认证信息和必要参数
-                </p>
-              </div>
-            </div>
-
-            <div
-              v-if="currentChannelConfig.dynamicRecipient?.support"
-              class="mb-4 p-3 bg-brand border border-brand rounded-md"
-            >
-              <div class="flex items-start gap-2">
-                <MailOutlined class="text-[16px] text-white mt-0.5" />
-                <div class="flex-1 space-y-1">
-                  <p class="text-xs text-white font-medium">
-                    支持群发模式 - 可在配置实例时启用"动态接收者"，通过 API 的
-                    <code class="px-1 py-0.5 bg-white/10 rounded text-[11px] text-white">recipients</code>
-                    参数指定多个{{ currentChannelConfig.dynamicRecipient.label }}
-                  </p>
-                  <p class="text-[11px] text-white/80">
-                    适用：邮件群发、公众号批量推送、营销通知等
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div v-if="currentChannelConfig.inputs && currentChannelConfig.inputs.length > 0" class="mb-8">
-              <h4 class="text-base font-medium mb-4 text-foreground">基本配置</h4>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div
-                  v-for="input in currentChannelConfig.inputs"
-                  :key="input.col"
-                  class="space-y-2"
-                  :class="{
-                    'md:col-span-2': input.isTextArea
-                  }"
-                >
-                  <Label :for="input.col" class="text-sm font-medium">
+                <div v-for="input in channelAuthInputs" :key="input.col" class="ways-form-field" :class="{ 'ways-form-field-wide': input.isTextArea }">
+                  <label :for="input.col">
                     {{ input.subLabel || input.label }}
-                    <span v-if="input.tips" class="text-xs text-muted-foreground ml-1">({{ input.tips }})</span>
-                  </Label>
-                  <Textarea
+                    <small v-if="input.tips">{{ input.tips }}</small>
+                  </label>
+                  <el-input
                     v-if="input.isTextArea"
                     :id="input.col"
                     v-model="formData[input.col]"
+                    type="textarea"
+                    :rows="4"
                     :placeholder="input.desc || input.placeholder || input.subLabel || input.label"
-                    :class="[
-                      'w-full rounded-md border weak-divider bg-background placeholder:text-muted-foreground focus:border-2 focus:border-brand focus:ring-0 focus-visible:ring-0 transition-transform transition-colors focus:scale-[1.01]',
-                      validationState.errors.value[input.col] ? 'border-red-500 focus:border-red-500' : ''
-                    ]"
+                    :class="validationState.errors.value[input.col] ? 'is-error' : ''"
                     @input="() => validationState.clearFieldError(input.col)"
                   />
-                  <Input
+                  <el-input
                     v-else
                     :id="input.col"
                     v-model="formData[input.col]"
+                    :type="isSensitiveInput(input) ? 'password' : 'text'"
+                    :show-password="isSensitiveInput(input)"
+                    clearable
                     :placeholder="input.desc || input.placeholder || input.subLabel || input.label"
-                    :class="[
-                      'w-full rounded-md border weak-divider placeholder:text-muted-foreground focus:border-2 focus:border-brand focus:ring-0 focus-visible:ring-0 transition-transform transition-colors focus:scale-[1.01]',
-                      validationState.errors.value[input.col] ? 'border-red-500 focus:border-red-500' : ''
-                    ]"
+                    :class="validationState.errors.value[input.col] ? 'is-error' : ''"
                     @input="() => validationState.clearFieldError(input.col)"
                   />
-                  <div v-if="validationState.errors.value[input.col]" class="text-red-500 text-xs mt-1">
-                    {{ validationState.errors.value[input.col] }}
-                  </div>
+                  <div v-if="validationState.errors.value[input.col]" class="app-form-error">{{ validationState.errors.value[input.col] }}</div>
                 </div>
               </div>
+            </section>
 
-              <div class="mt-2 ml-4" v-if="currentChannelConfig.tips && currentChannelConfig.tips.text">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger class="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
-                      {{ currentChannelConfig.tips.text }}
-                      <span
-                        class="cursor-help inline-flex items-center justify-center w-4 h-4 rounded-full border weak-divider hover:border-foreground/30 text-xs"
-                      >
-                        ?
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent class="max-w-md">
-                      <div class="text-sm" v-html="currentChannelConfig.tips.desc"></div>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+            <section v-if="currentChannelConfig.dynamicRecipient?.support || currentChannelConfig.tips?.text" class="ways-form-notes">
+              <div v-if="currentChannelConfig.dynamicRecipient?.support" class="ways-form-note">
+                <MailOutlined />
+                <div><strong>{{ messages.dynamicRecipients }}</strong><p>{{ messages.dynamicRecipientPrefix }}<code>recipients</code>{{ messages.dynamicRecipientSuffix }}{{ currentChannelConfig.dynamicRecipient.label }}{{ messages.sentenceEnd }}</p></div>
               </div>
-            </div>
+              <el-tooltip v-if="currentChannelConfig.tips?.text" placement="top" effect="dark">
+                <template #content><div class="max-w-md text-sm" v-html="currentChannelConfig.tips.desc"></div></template>
+                <button type="button" class="ways-form-help">{{ currentChannelConfig.tips.text }} <span>?</span></button>
+              </el-tooltip>
+            </section>
           </div>
-          <div v-else class="mt-6 p-6 bg-muted/40 dark:bg-muted/20 rounded-lg">
-            <p class="text-muted-foreground">请选择一个渠道类型开始配置</p>
-          </div>
+          <div v-else class="ways-form-empty">{{ messages.selectType }}</div>
         </transition>
+      </main>
+    </div>
+
+    <footer class="ways-form-actions">
+      <span>{{ messages.testBeforeSave }}</span>
+      <div>
+        <el-button @click="handleClose">{{ messages.cancel }}</el-button>
+        <el-button @click="handleTest">{{ messages.testConnection }}</el-button>
+        <el-button type="primary" @click="handleSave">{{ saveButtonText }}</el-button>
       </div>
-    </div>
+    </footer>
 
-    <div
-      class="flex justify-end gap-3 mt-8 pt-4 border-t weak-divider sticky bottom-0 bg-background"
-    >
-      <Button variant="outline" class="transition-transform hover:-translate-y-0.5" @click="handleClose">
-        取消
-      </Button>
-      <Button class="transition-transform hover:-translate-y-0.5" @click="handleTest">
-        测试
-      </Button>
-      <Button
-        class="transition-transform hover:-translate-y-0.5 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white"
-        @click="handleSave"
-      >
-        {{ saveButtonText }}
-      </Button>
-    </div>
-
-    <Dialog v-model:open="testRecipientDialogOpen">
-      <DialogContent class="sm:max-w-[480px]">
-        <DialogHeader>
-          <DialogTitle>测试接收者</DialogTitle>
-        </DialogHeader>
+    <el-dialog v-model="testRecipientDialogOpen" :title="messages.testRecipient" width="480px" class="app-nested-dialog" append-to-body>
         <div class="space-y-2">
-          <Label>请输入接收者企微ID</Label>
-          <Input v-model="testRecipientInput" placeholder="例如：zhangsan" />
-          <p class="text-xs text-muted-foreground">仅用于本次测试发送，不会写入渠道默认配置。</p>
+          <label class="text-sm font-medium">{{ messages.recipientLabel }}</label>
+          <el-input v-model="testRecipientInput" :placeholder="messages.recipientPlaceholder" clearable />
+          <p class="text-xs text-muted-foreground">{{ messages.recipientHelp }}</p>
           <p v-if="testRecipientInput.trim()" class="text-xs" :class="isAllRecipient ? 'text-destructive' : 'text-emerald-600'">
-            {{ isAllRecipient ? '当前输入为全员发送（高风险）' : '当前输入为单用户发送' }}
+            {{ isAllRecipient ? messages.allRecipientWarning : messages.singleRecipientNotice }}
           </p>
         </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" @click="testRecipientDialogOpen = false">取消</Button>
-          <Button type="button" @click="confirmTestRecipient">确认测试</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <template #footer>
+          <el-button @click="testRecipientDialogOpen = false">{{ messages.cancel }}</el-button>
+          <el-button type="primary" @click="confirmTestRecipient">{{ messages.confirmTest }}</el-button>
+        </template>
+    </el-dialog>
 
-    <Dialog v-model:open="testAllConfirmDialogOpen">
-      <DialogContent class="sm:max-w-[520px]">
-        <DialogHeader>
-          <DialogTitle>高风险确认</DialogTitle>
-        </DialogHeader>
+    <el-dialog v-model="testAllConfirmDialogOpen" :title="messages.highRiskConfirm" width="520px" class="app-nested-dialog" append-to-body>
         <p class="text-sm text-destructive">
-          你输入的是 all/@all，这将把测试消息发送给企业微信应用可触达的所有成员，风险较高，请再次确认。
+          {{ messages.highRiskDescription }}
         </p>
-        <DialogFooter>
-          <Button type="button" variant="outline" @click="testAllConfirmDialogOpen = false">取消</Button>
-          <Button type="button" variant="destructive" @click="submitQyWeiXinAppTest(testRecipientInput.trim())">仍然发送</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <template #footer>
+          <el-button @click="cancelAllRecipientConfirm">{{ messages.cancel }}</el-button>
+          <el-button type="danger" @click="submitQyWeiXinAppTest(testRecipientInput.trim())">{{ messages.sendAnyway }}</el-button>
+        </template>
+    </el-dialog>
 
   </div>
 </template>
@@ -621,14 +517,385 @@ export default defineComponent({
 </script>
 
 <style scoped>
+.ways-form {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  color: var(--foreground);
+}
+
+.ways-form-layout {
+  display: grid;
+  grid-template-columns: 214px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  background: var(--app-overlay-surface);
+}
+
+.ways-form-layout-edit {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ways-form-nav {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--app-overlay-border);
+  background: color-mix(in srgb, var(--admin-surface-muted) 68%, var(--app-overlay-surface));
+}
+
+.ways-form-nav-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--app-overlay-border);
+}
+
+.ways-form-nav-header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ways-form-nav-header span {
+  color: var(--admin-text-muted);
+  font-size: 11px;
+}
+
+.ways-form-channel-list {
+  display: grid;
+  gap: 3px;
+  min-height: 0;
+  padding: 8px;
+  overflow-y: auto;
+}
+
+.ways-form-channel-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 18px;
+  align-items: center;
+  min-height: 38px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--admin-text-muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+.ways-form-channel-item:hover {
+  background: color-mix(in srgb, var(--brand-500) 6%, var(--app-overlay-surface));
+  color: var(--foreground);
+}
+
+.ways-form-channel-item.is-active {
+  border-color: color-mix(in srgb, var(--brand-500) 22%, var(--app-overlay-border));
+  background: color-mix(in srgb, var(--brand-500) 10%, var(--app-overlay-surface));
+  color: var(--brand-700);
+}
+
+.ways-form-channel-icon,
+.ways-form-identity-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ways-form-channel-icon :deep(svg) {
+  width: 17px;
+  height: 17px;
+}
+
+.ways-form-channel-name {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ways-form-channel-check {
+  font-size: 12px;
+  text-align: right;
+}
+
+.ways-form-main {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--glass-inset-bg);
+}
+
+.ways-form-content {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.ways-form-section {
+  border: 1px solid var(--app-overlay-border);
+  border-radius: 9px;
+  background: var(--app-overlay-surface);
+}
+
+.ways-form-identity-icon {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--brand-500) 10%, var(--app-overlay-surface));
+  color: var(--brand-700);
+}
+
+.ways-form-identity-icon :deep(svg) {
+  width: 21px;
+  height: 21px;
+}
+
+.ways-form-section-title {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.ways-form-section-title code,
+.ways-form-capability {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ways-form-section-title code {
+  background: var(--admin-surface-muted);
+  color: var(--admin-text-muted);
+  font-family: monospace;
+}
+
+.ways-form-capability {
+  background: color-mix(in srgb, var(--el-color-success) 10%, transparent);
+  color: var(--el-color-success);
+}
+
+.ways-form-section-header p,
+.ways-form-note p {
+  margin: 4px 0 0;
+  color: var(--admin-text-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.ways-form-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 38px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--app-overlay-border);
+}
+
+.ways-form-section-header > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ways-form-section-header span {
+  color: var(--brand-600);
+  font-family: monospace;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.ways-form-section-header h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ways-form-section-header p {
+  margin: 0;
+}
+
+.ways-form-section-body {
+  padding: 14px;
+}
+
+.ways-form-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+
+.ways-form-field {
+  min-width: 0;
+}
+
+.ways-form-field-name {
+  max-width: 560px;
+}
+
+.ways-form-field-wide {
+  grid-column: 1 / -1;
+}
+
+.ways-form-field label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ways-form-field label small {
+  margin-left: 5px;
+  color: var(--admin-text-muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.ways-form-notes {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--app-overlay-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--brand-50) 32%, var(--app-overlay-surface));
+}
+
+.ways-form-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+}
+
+.ways-form-note > :deep(svg) {
+  flex: none;
+  margin-top: 2px;
+  color: var(--brand-600);
+}
+
+.ways-form-note strong {
+  font-size: 12px;
+}
+
+.ways-form-note p {
+  margin-top: 2px;
+}
+
+.ways-form-help {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--admin-text-muted);
+  cursor: help;
+  font-size: 11px;
+}
+
+.ways-form-help span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  border: 1px solid var(--app-overlay-border);
+  border-radius: 50%;
+}
+
+.ways-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 58px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--app-overlay-border);
+  background: var(--app-overlay-surface);
+}
+
+.ways-form-actions > span {
+  color: var(--admin-text-muted);
+  font-size: 11px;
+}
+
+.ways-form-actions > div {
+  display: flex;
+  gap: 8px;
+}
+
+.ways-form-empty {
+  margin: 16px;
+  padding: 28px;
+  border: 1px dashed var(--app-overlay-border);
+  border-radius: 9px;
+  color: var(--admin-text-muted);
+  text-align: center;
+}
+
 .fade-config-enter-active,
 .fade-config-leave-active {
-  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+  transition: opacity 0.15s ease;
 }
 
 .fade-config-enter-from,
 .fade-config-leave-to {
   opacity: 0;
-  transform: translateY(4px);
+}
+
+@container app-managed-drawer (max-width: 720px) {
+  .ways-form-layout {
+    display: block;
+    overflow-y: auto;
+  }
+
+  .ways-form-nav {
+    max-height: 230px;
+    border-right: 0;
+    border-bottom: 1px solid var(--app-overlay-border);
+  }
+
+  .ways-form-main {
+    overflow: visible;
+  }
+
+  .ways-form-content {
+    padding: 12px;
+  }
+
+  .ways-form-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .ways-form-section-header {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .ways-form-notes,
+  .ways-form-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ways-form-section-header p,
+  .ways-form-actions > span {
+    display: none;
+  }
+
+  .ways-form-actions > div {
+    width: 100%;
+  }
+
+  .ways-form-actions :deep(.el-button) {
+    flex: 1;
+  }
 }
 </style>

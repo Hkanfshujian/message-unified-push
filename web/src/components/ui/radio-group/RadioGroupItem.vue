@@ -1,38 +1,27 @@
 <script setup lang="ts">
-import type { RadioGroupItemProps } from "reka-ui"
 import type { HTMLAttributes } from "vue"
-import { reactiveOmit } from "@vueuse/core"
-import {
-  RadioGroupIndicator,
-  RadioGroupItem,
-
-  useForwardProps,
-} from "reka-ui"
 import { cn } from "@/lib/utils"
 
-const props = defineProps<RadioGroupItemProps & { class?: HTMLAttributes["class"] }>()
-
-const delegatedProps = reactiveOmit(props, "class")
-
-const forwardedProps = useForwardProps(delegatedProps)
+const props = defineProps<{
+  value: string
+  id?: string
+  disabled?: boolean
+  class?: HTMLAttributes["class"]
+}>()
 </script>
 
 <template>
-  <RadioGroupItem
+  <input
     data-slot="radio-group-item"
-    v-bind="forwardedProps"
+    type="radio"
+    :id="id"
+    :value="value"
+    :disabled="disabled"
     :class="
       cn(
-        'border-input text-primary focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 aspect-square size-4 shrink-0 rounded-full border shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50',
+        'border-[var(--glass-inset-border)] text-brand-600 focus-visible:border-[var(--brand-400)] focus-visible:ring-brand-200/40 aria-invalid:ring-red-200/45 aria-invalid:border-red-400 bg-[var(--glass-inset-bg)] aspect-square size-4 shrink-0 rounded-full border shadow-[var(--glass-shadow-inset)] transition-[color,box-shadow,border-color] outline-none focus-visible:ring-4 disabled:cursor-not-allowed disabled:opacity-50',
         props.class,
       )
     "
   >
-    <RadioGroupIndicator
-      data-slot="radio-group-indicator"
-      class="relative flex items-center justify-center"
-    >
-      <span class="absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary" />
-    </RadioGroupIndicator>
-  </RadioGroupItem>
 </template>

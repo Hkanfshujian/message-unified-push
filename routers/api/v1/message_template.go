@@ -2,13 +2,13 @@ package v1
 
 import (
 	"fmt"
+	"net/http"
 	"ops-message-unified-push/models"
 	"ops-message-unified-push/pkg/app"
 	"ops-message-unified-push/pkg/e"
 	"ops-message-unified-push/pkg/util"
 	"ops-message-unified-push/service/message_template_service"
 	"ops-message-unified-push/service/send_ins_service"
-	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -23,12 +23,12 @@ func GetMessageTemplateList(c *gin.Context) {
 
 	offset, limit := util.GetPageSize(c)
 	templateService := message_template_service.TemplateService{
-		Text:     text,
-		Status:   status,
+		Text:      text,
+		Status:    status,
 		StartTime: startTime,
 		EndTime:   endTime,
-		PageNum:  offset,
-		PageSize: limit,
+		PageNum:   offset,
+		PageSize:  limit,
 	}
 
 	templates, err := templateService.GetAll()
@@ -194,8 +194,8 @@ func EditMessageTemplate(c *gin.Context) {
 	appG.CResponse(http.StatusOK, "更新模板成功", nil)
 }
 
-// DeleteMessageTemplate 删除消息模板
-func DeleteMessageTemplate(c *gin.Context) {
+// DeleteMessageTemplate delegates persistence to the model's soft deletion lifecycle.
+func ArchiveMessageTemplate(c *gin.Context) {
 	appG := app.Gin{C: c}
 
 	var req struct {
@@ -222,7 +222,7 @@ func DeleteMessageTemplate(c *gin.Context) {
 		return
 	}
 
-	if err := templateService.Delete(); err != nil {
+	if err := templateService.Archive(); err != nil {
 		appG.CResponse(http.StatusInternalServerError, "删除模板失败："+err.Error(), nil)
 		return
 	}
@@ -371,15 +371,15 @@ func AddTemplateIns(c *gin.Context) {
 	appG.CResponse(http.StatusOK, "添加实例成功！", nil)
 }
 
-type TemplateInsDeleteReq struct {
+type TemplateInsArchiveReq struct {
 	ID string `json:"id" validate:"required,len=12" label:"实例id"`
 }
 
-// DeleteTemplateIns 删除模板实例
-func DeleteTemplateIns(c *gin.Context) {
+// DeleteTemplateIns delegates persistence to the model deletion.
+func ArchiveTemplateIns(c *gin.Context) {
 	var (
 		appG = app.Gin{C: c}
-		req  TemplateInsDeleteReq
+		req  TemplateInsArchiveReq
 	)
 
 	errCode, errMsg := app.BindJsonAndPlayValid(c, &req)
@@ -391,7 +391,7 @@ func DeleteTemplateIns(c *gin.Context) {
 	sendTaskInsService := send_ins_service.SendTaskInsService{
 		ID: req.ID,
 	}
-	if err := sendTaskInsService.Delete(); err != nil {
+	if err := sendTaskInsService.Archive(); err != nil {
 		appG.CResponse(http.StatusBadRequest, "删除实例失败！", nil)
 		return
 	}

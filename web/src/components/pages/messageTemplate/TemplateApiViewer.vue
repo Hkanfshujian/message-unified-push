@@ -1,27 +1,30 @@
 <script lang="ts">
 import { ref, defineComponent, watch, toRef, computed } from 'vue'
-import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Badge } from '@/components/ui/badge'
+import hljs from 'highlight.js/lib/core'
+import bash from 'highlight.js/lib/languages/bash'
+import javascript from 'highlight.js/lib/languages/javascript'
+import python from 'highlight.js/lib/languages/python'
+import php from 'highlight.js/lib/languages/php'
+import go from 'highlight.js/lib/languages/go'
+import java from 'highlight.js/lib/languages/java'
+import rust from 'highlight.js/lib/languages/rust'
 import { TemplateApiStrGenerate } from '@/util/viewApi'
+
+hljs.registerLanguage('bash', bash)
+hljs.registerLanguage('javascript', javascript)
+hljs.registerLanguage('python', python)
+hljs.registerLanguage('php', php)
+hljs.registerLanguage('go', go)
+hljs.registerLanguage('java', java)
+hljs.registerLanguage('rust', rust)
 import { useInstanceData } from '@/composables/useInstanceData'
 import { useApiCodeViewer } from '@/composables/useApiCodeViewer'
+import AppDetailDrawer from '@/components/ui/AppDetailDrawer.vue'
+import { zhCN } from '@/locales/zh-CN'
 
 export default defineComponent({
   name: 'TemplateApiViewer',
-  components: {
-    Button,
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    Tabs,
-    TabsContent,
-    TabsList,
-    TabsTrigger,
-    Badge
-  },
+  components: { AppDetailDrawer },
   props: {
     open: {
       type: Boolean,
@@ -34,6 +37,7 @@ export default defineComponent({
   },
   emits: ['update:open'],
   setup(props, { emit }) {
+    const messages = zhCN.templateApiViewer
     // 处理关闭事件
     const handleUpdateOpen = (value: boolean) => {
       emit('update:open', value)
@@ -114,6 +118,21 @@ export default defineComponent({
       }
     }
 
+    const highlightLanguageMap: Record<string, string> = {
+      curl: 'bash',
+      javascript: 'javascript',
+      python: 'python',
+      php: 'php',
+      golang: 'go',
+      java: 'java',
+      rust: 'rust'
+    }
+
+    const getHighlightedCode = (language: string) => {
+      const code = generateApiCode(language)
+      return hljs.highlight(code, { language: highlightLanguageMap[language] || 'plaintext' }).value
+    }
+
     return {
       handleUpdateOpen,
       activeTab,
@@ -125,137 +144,532 @@ export default defineComponent({
       codeLanguages,
       codeStyle,
       generateApiCode,
-      copyToClipboard
+      getHighlightedCode,
+      copyToClipboard,
+      messages
     }
   }
 })
 </script>
 
 <template>
-  <Dialog :open="open" @update:open="handleUpdateOpen">
-    <DialogContent class="w-[min(855px,98vw)] !max-w-[98vw] sm:!max-w-[98vw] max-h-[90vh] overflow-hidden flex flex-col">
-      <DialogHeader class="flex-shrink-0 border-b weak-divider pb-3">
-        <DialogTitle class="flex items-center gap-2 text-lg sm:text-xl">
-          <span>模板API接口</span>
-          <Badge v-if="templateData" variant="outline">{{ templateData.name }}</Badge>
-        </DialogTitle>
-        <p class="text-xs text-muted-foreground">通过 V2 接口发送模板消息，支持动态接收者与同步结果回传。</p>
-      </DialogHeader>
+  <AppDetailDrawer :model-value="open" :title="messages.title" size="min(900px, 96vw)" @update:model-value="handleUpdateOpen">
 
-      <div class="space-y-5 flex-1 overflow-y-auto pr-1 sm:pr-2 mt-4">
-        <!-- API 信息概览 -->
-        <div class="border weak-divider rounded-xl p-4 space-y-3 bg-muted/20">
-          <div class="flex items-center gap-2 flex-wrap">
-            <Badge variant="default">POST</Badge>
-            <code class="text-sm bg-muted dark:bg-muted/20 px-2 py-1 rounded">/api/v2/message/send</code>
+      <div class="template-api-content">
+        <section class="template-api-overview" aria-labelledby="template-api-overview-title">
+          <div class="template-api-identity">
+            <h3 id="template-api-overview-title">{{ templateData?.name || messages.unnamedTemplate }}</h3>
+            <code>{{ templateData?.id }}</code>
           </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-muted-foreground">
-            <p><strong class="text-foreground">模板ID:</strong> <code class="bg-muted dark:bg-muted/20 px-1 py-0.5 rounded">{{ templateData?.id }}</code></p>
-            <p><strong class="text-foreground">必填参数:</strong> token, title, placeholders</p>
-            <p><strong class="text-foreground">可选参数:</strong> recipients, wait_result</p>
-            <p class="text-amber-600 dark:text-amber-400"><strong>⚠️ 注意:</strong> 使用加密 token，不支持明文模板ID</p>
+
+          <div class="template-api-endpoint" :aria-label="messages.requestAddress">
+            <span class="template-api-method">POST</span>
+            <code>/api/v2/message/send</code>
           </div>
-          
-          <!-- 已启用的渠道列表 -->
-          <div v-if="enabledChannelNames.length > 0" class="mt-2 pt-3 border-t weak-divider">
-            <p class="text-xs font-medium text-muted-foreground mb-2">已启用发送渠道</p>
-            <div class="flex flex-wrap gap-2">
-              <Badge 
-                v-for="(name, index) in enabledChannelNames" 
-                :key="index" 
-                variant="secondary"
-                class="text-xs rounded-md"
-              >
-                {{ name }}
-              </Badge>
+
+          <dl class="template-api-contract">
+            <div>
+              <dt>{{ messages.requiredParameters }}</dt>
+              <dd><code>token</code><code>title</code><code>placeholders</code></dd>
             </div>
-          </div>
-          <div v-else class="mt-2 pt-3 border-t weak-divider">
-            <p class="text-xs text-amber-600 dark:text-amber-400">⚠️ 该模板暂无启用的发送渠道</p>
-          </div>
-        </div>
+            <div>
+              <dt>{{ messages.optionalParameters }}</dt>
+              <dd><code>recipients</code><code>wait_result</code></dd>
+            </div>
+            <div>
+              <dt>{{ messages.sendChannels }}</dt>
+              <dd v-if="enabledChannelNames.length" class="template-api-channel-list">
+                <span v-for="name in enabledChannelNames" :key="name">{{ name }}</span>
+              </dd>
+              <dd v-else class="template-api-empty">{{ messages.noEnabledChannels }}</dd>
+            </div>
+          </dl>
 
-        <!-- 可选参数 -->
-        <div v-if="hasDynamicRecipientInstance" class="border weak-divider rounded-xl p-4 bg-muted/20">
-          <h3 class="font-semibold mb-3">可选参数</h3>
-          <div class="flex flex-wrap gap-4">
-            <label class="flex items-center gap-2 cursor-not-allowed opacity-75">
-              <input 
-                type="checkbox" 
-                v-model="showRecipients" 
-                disabled
-                class="rounded cursor-not-allowed"
-              >
-              <span class="text-sm">动态接收者</span>
-              <Badge variant="secondary" class="text-xs">必填</Badge>
-            </label>
-          </div>
-          <div class="space-y-1 text-xs text-muted-foreground mt-3">
-            <p>📧 动态接收者：该模板配置了动态接收实例，发送时必须通过 API 指定接收者列表（群发模式）。</p>
-            <p class="text-amber-600 dark:text-amber-400">⚠️ 此参数已自动勾选且不可取消，因为模板已配置动态接收实例</p>
-          </div>
-        </div>
+          <p class="template-api-security-note">
+            <strong>{{ messages.authRequirement }}</strong>
+            {{ messages.authDescription }}<code>token</code>{{ messages.authDescriptionSuffix }}
+          </p>
+        </section>
 
-        <!-- 代码示例 -->
-        <div class="space-y-4 border weak-divider rounded-xl p-4 bg-muted/10">
-          <div class="flex items-center justify-between">
-            <h3 class="font-semibold">代码示例</h3>
-            <Tabs v-model="codeStyle" class="w-40">
-              <TabsList class="grid w-full grid-cols-2">
-                <TabsTrigger value="script">脚本</TabsTrigger>
-                <TabsTrigger value="function">函数封装</TabsTrigger>
-              </TabsList>
-            </Tabs>
+        <section v-if="hasDynamicRecipientInstance" class="template-api-recipient" aria-labelledby="template-api-recipient-title">
+          <div>
+            <span class="template-api-eyebrow">{{ messages.dynamicRecipients }}</span>
+            <h3 id="template-api-recipient-title">{{ messages.recipientTitle }}</h3>
+            <p>{{ messages.recipientDescriptionPrefix }}<code>recipients</code>{{ messages.recipientDescriptionSuffix }}</p>
           </div>
+          <el-tag type="warning" effect="plain">{{ messages.enabled }}</el-tag>
+        </section>
 
-          <Tabs v-model="activeTab" class="w-full">
-            <TabsList class="grid w-full grid-cols-7 gap-1 h-9">
-              <TabsTrigger v-for="lang in codeLanguages" :key="lang.value" :value="lang.value"
-                class="flex items-center gap-1 px-2 py-1 text-xs">
-                <span>{{ lang.icon }}</span>
-                <span class="hidden sm:inline">{{ lang.label }}</span>
-                <span class="sm:hidden">{{ lang.label.slice(0, 3) }}</span>
-              </TabsTrigger>
-            </TabsList>
+        <section class="template-api-workbench" aria-labelledby="template-api-code-title">
+          <header class="template-api-section-header">
+            <h3 id="template-api-code-title">{{ messages.codeExamples }}</h3>
+            <el-segmented v-model="codeStyle" :options="[{ label: messages.script, value: 'script' }, { label: messages.functionWrapper, value: 'function' }]" />
+          </header>
 
-            <TabsContent v-for="lang in codeLanguages" :key="lang.value" :value="lang.value" class="mt-4">
-              <div class="relative rounded-xl border weak-divider overflow-hidden">
-                <Button size="sm" variant="secondary" class="absolute top-2 right-2 z-10"
-                  @click="copyToClipboard(generateApiCode(lang.value))">
-                  复制代码
-                </Button>
-                <pre
-                  class="bg-foreground text-background p-4 overflow-x-auto text-xs leading-relaxed max-w-full whitespace-pre-wrap break-words"><code class="text-xs font-mono">{{ generateApiCode(lang.value) }}</code></pre>
+          <el-tabs v-model="activeTab" class="template-api-tabs">
+            <el-tab-pane v-for="lang in codeLanguages" :key="lang.value" :name="lang.value" :label="lang.label">
+              <div class="template-api-code">
+                <div class="template-api-code-toolbar">
+                  <span>{{ lang.label }}</span>
+                  <el-button size="small" plain @click="copyToClipboard(generateApiCode(lang.value))">{{ messages.copyCode }}</el-button>
+                </div>
+                <pre><code class="hljs" v-html="getHighlightedCode(lang.value)"></code></pre>
               </div>
-            </TabsContent>
-          </Tabs>
-        </div>
+            </el-tab-pane>
+          </el-tabs>
+        </section>
 
-        <!-- 说明 -->
-        <div class="border border-brand-200/70 dark:border-brand-800/60 bg-brand-50/70 dark:bg-brand-900/20 p-4 rounded-xl text-xs space-y-1">
-          <p class="font-semibold text-brand-900 dark:text-brand-200">💡 使用说明</p>
-          <ul class="text-brand-800 dark:text-brand-300 space-y-1 ml-4 list-disc leading-5">
-            <li><strong>token 参数：</strong>需要使用加密后的 token，不能直接使用明文模板ID（安全考虑）</li>
-            <li><strong>placeholders 参数：</strong>用于替换模板中的占位符，格式为 <code class="bg-brand-100 dark:bg-brand-900 px-1 rounded">{"key": "value"}</code></li>
-            <li><strong>recipients 参数：</strong>动态接收者列表；企业微信应用传企微用户ID、微信公众号传OpenID、短信传手机号、邮件传邮箱（仅模板启用动态接收者实例时需要）</li>
-            <li><strong>wait_result 参数：</strong>是否同步等待发送结果，示例 <code class="bg-brand-100 dark:bg-brand-900 px-1 rounded">"wait_result": true</code>（联调排错建议开启）</li>
-            <li>如果模板配置了@提醒，会自动应用到发送的消息中</li>
-            <li>支持 Text、HTML、Markdown 三种格式，根据实例配置精确发送对应类型</li>
-            <li>系统会自动遍历所有启用的实例进行发送</li>
-          </ul>
-        </div>
+        <section class="template-api-guide" aria-labelledby="template-api-guide-title">
+          <header class="template-api-section-header">
+            <h3 id="template-api-guide-title">{{ messages.guide }}</h3>
+          </header>
+          <dl class="template-api-guide-list">
+            <div><dt><code>token</code></dt><dd>{{ messages.tokenGuide }}</dd></div>
+            <div><dt><code>recipients</code></dt><dd>{{ messages.recipientsGuide }}</dd></div>
+            <div><dt><code>placeholders</code></dt><dd>{{ messages.placeholdersGuidePrefix }}<code>{"key": "value"}</code>。</dd></div>
+            <div><dt><code>wait_result</code></dt><dd>{{ messages.waitResultGuidePrefix }}<code>true</code>。</dd></div>
+          </dl>
+          <p class="template-api-guide-footnote">{{ messages.guideFootnote }}</p>
+        </section>
       </div>
-    </DialogContent>
-  </Dialog>
+  </AppDetailDrawer>
 </template>
 
 <style scoped>
-/* 代码块样式优化 */
-pre {
+.template-api-content {
+  display: grid;
+  gap: 16px;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.template-api-overview,
+.template-api-workbench,
+.template-api-guide {
+  overflow: hidden;
+  border: 1px solid var(--app-overlay-border);
+  border-radius: 10px;
+  background: var(--app-overlay-surface);
+}
+
+.template-api-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--app-overlay-border);
+}
+
+.template-api-eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--admin-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.template-api-section-header,
+.template-api-recipient {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.template-api-identity h3,
+.template-api-section-header h3,
+.template-api-recipient h3 {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.template-api-identity h3 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.template-api-identity > code {
+  flex: none;
+  margin-left: auto;
+  color: var(--admin-text-muted);
+  font-size: 12px;
+}
+
+.template-api-endpoint {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  background: color-mix(in srgb, var(--app-overlay-surface) 82%, var(--admin-surface-muted));
+  border-bottom: 1px solid var(--app-overlay-border);
+}
+
+.template-api-method {
+  flex: none;
+  padding: 4px 9px;
+  border: 1px solid color-mix(in srgb, var(--el-color-success) 28%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--el-color-success) 10%, transparent);
+  color: var(--el-color-success);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.template-api-endpoint > code {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.template-api-contract {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.15fr;
+  margin: 0;
+}
+
+.template-api-contract > div {
+  min-width: 0;
+  padding: 16px 20px;
+}
+
+.template-api-contract > div + div {
+  border-left: 1px solid var(--app-overlay-border);
+}
+
+.template-api-contract dt,
+.template-api-guide-list dt {
+  margin-bottom: 9px;
+  color: var(--admin-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.template-api-contract dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.template-api-contract dd code,
+.template-api-channel-list span {
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: var(--admin-surface-muted);
+  color: var(--foreground);
+  font-size: 11px;
+}
+
+.template-api-empty {
+  color: var(--admin-text-muted);
+  font-size: 12px;
+}
+
+.template-api-security-note {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  padding: 11px 20px;
+  border-top: 1px solid color-mix(in srgb, var(--el-color-warning) 22%, var(--app-overlay-border));
+  background: color-mix(in srgb, var(--el-color-warning) 7%, var(--app-overlay-surface));
+  color: var(--admin-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.template-api-security-note strong {
+  flex: none;
+  color: color-mix(in srgb, var(--el-color-warning) 78%, var(--foreground));
+}
+
+.template-api-recipient {
+  padding: 15px 18px;
+  border-left: 3px solid var(--el-color-warning);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--el-color-warning) 6%, var(--app-overlay-surface));
+}
+
+.template-api-recipient p {
+  margin: 5px 0 0;
+  color: var(--admin-text-muted);
+  font-size: 12px;
+}
+
+.template-api-section-header {
+  box-sizing: border-box;
+  min-height: 52px;
+  padding: 8px 14px 8px 18px;
+  border-bottom: 1px solid var(--app-overlay-border);
+}
+
+.template-api-tabs {
+  padding: 0 18px 18px;
+}
+
+.template-api-tabs :deep(.el-tabs__header) {
+  margin: 0 0 14px;
+}
+
+.template-api-tabs :deep(.el-tabs__item) {
+  height: 44px;
+  padding: 0 16px;
+  font-size: 12px;
+}
+
+.template-api-code {
+  display: flex;
+  flex-direction: column;
+  height: 320px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--foreground) 20%, transparent);
+  border-radius: 8px;
+  background: #172033;
+}
+
+.template-api-code-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 6px 8px 6px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.template-api-code pre {
+  flex: 1;
+  min-height: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: 18px;
+  overflow: scroll;
+  scrollbar-color: rgba(148, 163, 184, 0.72) rgba(15, 23, 42, 0.72);
+  scrollbar-width: auto;
+  color: #e5edf8;
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre;
+}
+
+.template-api-code pre::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.template-api-code pre::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.template-api-code pre::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(15, 23, 42, 0.72);
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.72);
+}
+
+.template-api-code pre::-webkit-scrollbar-thumb:hover {
+  background: rgba(203, 213, 225, 0.88);
+}
+
+.template-api-code pre::-webkit-scrollbar-corner {
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.template-api-code :deep(.hljs) {
+  color: #d8dee9;
+  background: transparent;
+}
+
+.template-api-code :deep(.hljs-comment),
+.template-api-code :deep(.hljs-quote) {
+  color: #718096;
+  font-style: italic;
+}
+
+.template-api-code :deep(.hljs-keyword),
+.template-api-code :deep(.hljs-selector-tag),
+.template-api-code :deep(.hljs-literal),
+.template-api-code :deep(.hljs-section),
+.template-api-code :deep(.hljs-link) {
+  color: #c792ea;
+}
+
+.template-api-code :deep(.hljs-string),
+.template-api-code :deep(.hljs-title),
+.template-api-code :deep(.hljs-name),
+.template-api-code :deep(.hljs-type),
+.template-api-code :deep(.hljs-attribute),
+.template-api-code :deep(.hljs-symbol),
+.template-api-code :deep(.hljs-bullet),
+.template-api-code :deep(.hljs-addition),
+.template-api-code :deep(.hljs-variable),
+.template-api-code :deep(.hljs-template-tag),
+.template-api-code :deep(.hljs-template-variable) {
+  color: #addb67;
+}
+
+.template-api-code :deep(.hljs-number),
+.template-api-code :deep(.hljs-meta),
+.template-api-code :deep(.hljs-built_in),
+.template-api-code :deep(.hljs-builtin-name),
+.template-api-code :deep(.hljs-params) {
+  color: #f78c6c;
+}
+
+.template-api-code :deep(.hljs-function .hljs-title),
+.template-api-code :deep(.hljs-class .hljs-title),
+.template-api-code :deep(.hljs-title.function_) {
+  color: #82aaff;
+}
+
+.template-api-code :deep(.hljs-property),
+.template-api-code :deep(.hljs-attr) {
+  color: #89ddff;
+}
+
+.template-api-guide-list {
+  display: block;
+  margin: 0;
+  padding: 6px 0;
+}
+
+.template-api-guide-list > div {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  min-height: 40px;
+  margin: 0 10px;
+  border-radius: 7px;
+}
+
+.template-api-guide-list > div + div {
+  border-top: 1px solid var(--app-overlay-border);
+  border-radius: 0;
+}
+
+.template-api-guide-list dt,
+.template-api-guide-list dd {
+  display: flex;
+  align-items: center;
+  margin: 0;
+}
+
+.template-api-guide-list dt {
+  padding: 6px 14px;
+}
+
+.template-api-guide-list dd {
+  padding: 6px 16px;
+  color: color-mix(in srgb, var(--foreground) 78%, var(--admin-text-muted));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.template-api-guide-list dt code {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--brand-500) 18%, var(--app-overlay-border));
+  border-radius: 5px;
+  background: var(--app-overlay-surface);
+  color: color-mix(in srgb, var(--brand-700) 76%, var(--foreground));
+}
+
+.template-api-guide-list code,
+.template-api-security-note code,
+.template-api-recipient code {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.template-api-guide-footnote {
+  position: relative;
+  margin: 0;
+  padding: 12px 18px 12px 34px;
+  border-top: 1px solid var(--app-overlay-border);
+  background: color-mix(in srgb, var(--brand-50) 38%, var(--app-overlay-surface));
+  color: var(--admin-text-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.template-api-guide-footnote::before {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand-500);
+  content: '';
+}
+
+pre,
+code {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
 }
 
-code {
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+@media (max-width: 760px) {
+  .template-api-content {
+    gap: 12px;
+  }
+
+  .template-api-recipient,
+  .template-api-security-note {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .template-api-section-header {
+    min-height: 48px;
+    padding-block: 7px;
+  }
+
+  .template-api-contract {
+    grid-template-columns: 1fr;
+  }
+
+  .template-api-contract > div + div {
+    border-left: 0;
+  }
+
+  .template-api-contract > div + div {
+    border-top: 1px solid var(--app-overlay-border);
+  }
+
+  .template-api-guide-list > div {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .template-api-section-header :deep(.el-segmented) {
+    width: 100%;
+  }
+
+  .template-api-tabs {
+    padding-inline: 12px;
+  }
+
+  .template-api-tabs :deep(.el-tabs__nav-wrap) {
+    overflow-x: auto;
+  }
 }
 </style>

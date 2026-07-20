@@ -7,6 +7,7 @@ import (
 
 type Settings struct {
 	IDModel
+	SoftDeleteModel
 
 	Section string `json:"section" gorm:"type:varchar(100) ;default:'';index"`
 	Key     string `json:"key" gorm:"type:varchar(100) ;default:'';"`
@@ -49,7 +50,8 @@ func GetSettingByKey(section string, key string) (Settings, error) {
 
 func GetSettingBySection(section string) ([]Settings, error) {
 	var settings []Settings
-	err := db.Table(GetSchema(Settings{})).Where("`section` = ? ", section).Scan(&settings).Error
+	table := GetSchema(Settings{})
+	err := db.Table(table).Where(notDeleted(table)).Where("`section` = ? ", section).Scan(&settings).Error
 	if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
 		return settings, err
 	}

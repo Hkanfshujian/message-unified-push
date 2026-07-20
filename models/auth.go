@@ -8,6 +8,7 @@ import (
 )
 
 type Auth struct {
+	SoftDeleteModel
 	ID             int    `json:"id" gorm:"autoIncrement;type:integer;primaryKey"`
 	Username       string `json:"username" gorm:"type:varchar(100);default:''"`
 	Password       string `json:"password" gorm:"type:varchar(100);default:''"`
@@ -160,18 +161,18 @@ func EditUserByID(id int, data map[string]interface{}) error {
 	return db.Model(&Auth{}).Where("id = ?", id).Updates(data).Error
 }
 
-func DeleteUserByID(id int) error {
-	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("user_id = ?", id).Delete(&RbacUserRole{}).Error; err != nil {
+func ArchiveUserByID(id int) error {
+	return WithTransaction(func(tx *gorm.DB) error {
+		if err := tx.Unscoped().Where("user_id = ?", id).Delete(&RbacUserRole{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("user_id = ?", id).Delete(&RbacUserGroupMember{}).Error; err != nil {
+		if err := tx.Unscoped().Where("user_id = ?", id).Delete(&RbacUserGroupMember{}).Error; err != nil {
 			return err
 		}
 		// TODO: 后续移除 AuthIdentity 相关逻辑
-		if err := tx.Where("user_id = ?", id).Delete(&AuthIdentity{}).Error; err != nil {
+		if err := tx.Unscoped().Where("user_id = ?", id).Delete(&AuthIdentity{}).Error; err != nil {
 			return err
 		}
-		return tx.Where("id = ?", id).Delete(&Auth{}).Error
+		return tx.Unscoped().Where("id = ?", id).Delete(&Auth{}).Error
 	})
 }

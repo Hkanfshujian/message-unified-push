@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useRbacStore } from '@/store/rbac'
 import {
   SettingOutlined,
   DeleteOutlined,
@@ -13,15 +14,18 @@ import {
 
 const route = useRoute()
 const router = useRouter()
+const rbacStore = useRbacStore()
 const menu = [
-  { id: 'site', name: '站点设置', icon: SettingOutlined, path: '/system/settings/site' },
-  { id: 'auth', name: '认证设置', icon: SafetyCertificateOutlined, path: '/system/settings/auth' },
-  { id: 'storage', name: '存储配置', icon: DatabaseOutlined, path: '/system/settings/storage' },
-  { id: 'clean', name: '数据清理', icon: DeleteOutlined, path: '/system/settings/clean' },
-  { id: 'mqStatusPolicy', name: '策略配置', icon: LineChartOutlined, path: '/system/settings/mq-status-policy' },
-  { id: 'tokenTool', name: '加解密工具', icon: KeyOutlined, path: '/system/settings/token-tool' },
-  { id: 'about', name: '站点关于', icon: InfoCircleOutlined, path: '/system/settings/about' }
+  { id: 'site', name: '站点设置', icon: SettingOutlined, path: '/system/settings/site', routeName: 'system-settings-site', requiredPermissions: ['system:settings:view'] },
+  { id: 'auth', name: '认证设置', icon: SafetyCertificateOutlined, path: '/system/settings/auth', routeName: 'system-settings-auth', requiredPermissions: ['system:settings:view'] },
+  { id: 'storage', name: '存储配置', icon: DatabaseOutlined, path: '/system/settings/storage', routeName: 'system-settings-storage', requiredPermissions: ['system:settings:view'] },
+  { id: 'clean', name: '数据清理', icon: DeleteOutlined, path: '/system/settings/clean', routeName: 'system-settings-clean', requiredPermissions: ['system:settings:view'] },
+  { id: 'mqStatusPolicy', name: '策略配置', icon: LineChartOutlined, path: '/system/settings/mq-status-policy', routeName: 'system-settings-mq-status-policy', requiredPermissions: ['system:settings:view'] },
+  { id: 'tokenTool', name: '加解密工具', icon: KeyOutlined, path: '/system/settings/token-tool', routeName: 'system-settings-token-tool', requiredPermissions: ['system:settings:view'] },
+  { id: 'about', name: '站点关于', icon: InfoCircleOutlined, path: '/system/settings/about', routeName: 'system-settings-about', requiredPermissions: ['system:settings:view'] }
 ]
+
+const visibleMenu = computed(() => menu.filter(item => rbacStore.hasAnyPermission(item.requiredPermissions)))
 
 const titleMap: Record<string, string> = {
   clean: '数据清理',
@@ -44,7 +48,11 @@ const descMap: Record<string, string> = {
 }
 
 const activeTab = computed(() => {
-  const current = menu.find(item => route.path.startsWith(item.path))
+  const routeName = String(route.name || '')
+  const current = visibleMenu.value.find(item => {
+    if (routeName === item.routeName) return true
+    return route.path === item.path || route.path.startsWith(`${item.path}/`)
+  })
   return current?.id || 'site'
 })
 const activeTitle = computed(() => titleMap[activeTab.value] || '')
@@ -52,60 +60,42 @@ const activeDescription = computed(() => descMap[activeTab.value] || '')
 const hideParentHeaderTabs = new Set(['clean', 'tokenTool'])
 const showParentHeader = computed(() => !hideParentHeaderTabs.has(activeTab.value))
 
-const handleClose = () => {
-  router.back()
-}
-
-const handleOpen = (path: string) => {
-  if (route.path === path) {
+const handleOpen = (item: typeof menu[number]) => {
+  if (route.name === item.routeName || route.path === item.path) {
     return
   }
-  router.push(path)
+  router.push({ name: item.routeName })
 }
 
 onMounted(() => {
-  // 兜底：首次进入 /system/settings 时强制跳默认子页，避免内容区空白
   if (route.path === '/system/settings' || route.path === '/system/settings/') {
-    router.replace('/system/settings/site')
+    router.replace(visibleMenu.value[0]?.path || '/404')
   }
 })
 </script>
 
 <template>
-  <div class="p-4 lg:p-6 w-full system-settings h-full flex flex-col overflow-hidden">
-    <div class="flex items-center justify-between mb-4 flex-shrink-0">
-      <h1 class="text-[18px] font-semibold text-foreground">系统设置</h1>
-      <button
-        type="button"
-        class="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-[var(--motion-fast)]"
-        @click="handleClose"
-        aria-label="关闭系统设置"
-      >
-        ×
-      </button>
-    </div>
-    <div class="flex flex-col lg:flex-row gap-4 flex-1 min-h-0 overflow-hidden">
-      <!-- 左侧菜单：固定不滚动 -->
-      <div class="left-nav lg:w-[240px] lg:flex-shrink-0 w-full overflow-y-auto lg:overflow-visible">
-        <div class="space-y-2">
+  <div class="system-settings app-settings-shell">
+    <div class="app-settings-layout">
+      <div class="app-settings-nav">
+        <div class="space-y-1">
           <button
-            v-for="item in menu"
+            v-for="item in visibleMenu"
             :key="item.id"
             type="button"
-            class="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors"
-            :class="activeTab === item.id ? 'bg-brand text-white' : 'text-foreground hover:bg-muted'"
-            @click="handleOpen(item.path)"
+            class="app-settings-nav-item"
+            :class="activeTab === item.id ? 'app-settings-nav-item-active' : 'app-settings-nav-item-idle'"
+            @click="handleOpen(item)"
           >
             <component :is="item.icon" class="w-4 h-4" />
             <span>{{ item.name }}</span>
           </button>
         </div>
       </div>
-      <!-- 右侧内容区：独立滚动 -->
-      <div class="right-content flex-1 min-w-0 w-full lg:border-l weak-divider lg:pl-5 mt-4 lg:mt-0 flex flex-col min-h-0 overflow-hidden">
+      <div class="app-settings-content">
         <transition name="settings-fade" mode="out-in">
-          <div :key="route.path" class="flex-1 flex flex-col gap-4 overflow-y-auto pr-2">
-            <div v-if="showParentHeader && activeTitle" class="space-y-1 flex-shrink-0">
+          <div :key="route.path" class="app-settings-panel-scroll">
+            <div v-if="showParentHeader && activeTitle" class="app-settings-section-heading">
               <h2 class="text-[16px] font-semibold text-foreground">{{ activeTitle }}</h2>
               <p class="text-[12px] text-muted-foreground">{{ activeDescription }}</p>
             </div>

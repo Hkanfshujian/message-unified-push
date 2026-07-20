@@ -2,7 +2,6 @@ package migrate
 
 import (
 	"errors"
-	"fmt"
 	"ops-message-unified-push/models"
 	"ops-message-unified-push/pkg/util"
 	"ops-message-unified-push/service/settings_service"
@@ -19,7 +18,7 @@ func InitAuthTableData() {
 
 	settingO, err := models.GetSettingByKey(initSection, initAuthKey)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		logrus.Error(fmt.Sprintf("查询账号初始化失败！"))
+		logrus.Error("查询账号初始化失败！")
 		return
 	}
 	if settingO.Value == "1" {
@@ -27,19 +26,23 @@ func InitAuthTableData() {
 		return
 	}
 
-	initAccountPasswd := util.GenerateRandomString(10)
+	initAccountPasswd, err := util.GenerateRandomString(10)
+	if err != nil {
+		logrus.Errorf("生成初始管理员密码失败: %v", err)
+		return
+	}
 
 	err = models.AddUser(initAccount, initAccountPasswd)
 	if err != nil {
-		logrus.Error(fmt.Sprintf("添加初始化admin账号失败！"))
+		logrus.Error("添加初始化admin账号失败！")
 		return
 	} else {
-		logrus.Info(fmt.Sprintf("初始化admin账号成功！您的账号：%s 密码：%s", initAccount, initAccountPasswd))
+		logrus.Infof("初始化admin账号成功！您的账号：%s 密码：%s", initAccount, initAccountPasswd)
 	}
 
 	err = models.AddOneSetting(models.Settings{Section: initSection, Key: initAuthKey, Value: "1"})
 	if err != nil {
-		logrus.Error(fmt.Sprintf("标记admin账号初始化状态失败！err: %s", err.Error()))
+		logrus.Errorf("标记admin账号初始化状态失败！err: %s", err.Error())
 		return
 	}
 }
@@ -61,7 +64,7 @@ func Setup() {
 		"prefix": "[Init Data]",
 	})
 
-	tables := []interface{}{
+	tables := []any{
 		&models.Auth{},
 		&models.SendWays{},
 		&models.SendTasksLogs{},
@@ -84,6 +87,11 @@ func Setup() {
 		&models.MQSource{},
 		&models.Subscription{},
 		&models.ConsumeLog{},
+		&models.SystemMessage{},
+		&models.MessageTargetScope{},
+		&models.MessageRecipientState{},
+		&models.BusinessPushMessage{},
+		&models.MessageDeliveryEvent{},
 	}
 
 	for _, table := range tables {

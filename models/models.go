@@ -31,6 +31,16 @@ type UUIDModel struct {
 	UpdatedAt  util.Time `json:"modified_on" gorm:"column:modified_on;autoUpdateTime ;"`
 }
 
+// SoftDeleteModel gives business records a recoverable lifecycle without
+// applying soft deletion to RBAC join rows that are rebuilt transactionally.
+type SoftDeleteModel struct {
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+}
+
+func notDeleted(table string) string {
+	return table + ".deleted_at IS NULL"
+}
+
 // Setup initializes the database instance
 func Setup() *gorm.DB {
 	var err error
@@ -83,4 +93,32 @@ func GetSchema(table any) string {
 	stmt := &gorm.Statement{DB: db}
 	stmt.Parse(table)
 	return stmt.Schema.Table
+}
+
+func GetDB() *gorm.DB {
+	return db
+}
+
+// WithTransaction commits only when fn succeeds and explicitly rolls back on
+// every error path so callers cannot accidentally leave a partial write set.
+func WithTransaction(fn func(tx *gorm.DB) error) (err error) {
+	tx := db.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			_ = tx.Rollback().Error
+			err = fmt.Errorf("transaction callback failed: %v", recovered)
+		}
+	}()
+	if err = fn(tx); err != nil {
+		_ = tx.Rollback().Error
+		return err
+	}
+	if err = tx.Commit().Error; err != nil {
+		_ = tx.Rollback().Error
+		return err
+	}
+	return nil
 }

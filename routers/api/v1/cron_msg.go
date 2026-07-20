@@ -11,15 +11,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type DeleteCronMsgTaskReq struct {
+type ArchiveCronMsgTaskReq struct {
 	ID string `json:"id" validate:"required,len=12" label:"任务id"`
 }
 
-// DeleteCronMsgTask 删除定时消息
-func DeleteCronMsgTask(c *gin.Context) {
+// DeleteCronMsgTask delegates persistence to the model deletion.
+func ArchiveCronMsgTask(c *gin.Context) {
 	var (
 		appG = app.Gin{C: c}
-		req  DeleteCronMsgTaskReq
+		req  ArchiveCronMsgTaskReq
 	)
 
 	errCode, errMsg := app.BindJsonAndPlayValid(c, &req)
@@ -33,7 +33,7 @@ func DeleteCronMsgTask(c *gin.Context) {
 	}
 	msg, _ := CronMsgService.GetByID()
 
-	err := CronMsgService.Delete()
+	err := CronMsgService.Archive()
 	if err != nil {
 		appG.CResponse(http.StatusBadRequest, "删除定时消息失败！", nil)
 		return
@@ -125,6 +125,10 @@ type EditCronMsgTaskReq struct {
 	Enable     int    `json:"enable" validate:"oneof=0 1" label:"是否开启"`
 }
 
+type UpdateCronMsgTaskStatusReq struct {
+	ID string `json:"id" validate:"required,len=12" label:"定时消息id"`
+}
+
 // EditCronMsgTask 编辑定时消息任务
 func EditCronMsgTask(c *gin.Context) {
 	var (
@@ -141,6 +145,11 @@ func EditCronMsgTask(c *gin.Context) {
 	CronMsgService := cron_msg_service.CronMsgService{
 		ID: req.ID,
 	}
+	msg, err := CronMsgService.GetByID()
+	if err != nil {
+		appG.CResponse(http.StatusBadRequest, "定时消息不存在！", nil)
+		return
+	}
 
 	data := make(map[string]interface{})
 	data["name"] = req.Name
@@ -148,15 +157,56 @@ func EditCronMsgTask(c *gin.Context) {
 	data["cron"] = req.Cron
 	data["title"] = req.Name
 	data["url"] = ""
-	data["enable"] = req.Enable
-	err := CronMsgService.Edit(data)
+	data["enable"] = msg.Enable
+	err = CronMsgService.Edit(data)
 	if err != nil {
 		appG.CResponse(http.StatusBadRequest, "编辑定时消息失败！", nil)
 		return
 	}
-	msg, _ := CronMsgService.GetByID()
+	msg, _ = CronMsgService.GetByID()
 	cron_msg_service.UpdateCronMsgToCronServer(msg)
 	appG.CResponse(http.StatusOK, "编辑定时消息成功！", nil)
+}
+
+func StartCronMsgTask(c *gin.Context) {
+	updateCronMsgTaskStatus(c, 1)
+}
+
+func StopCronMsgTask(c *gin.Context) {
+	updateCronMsgTaskStatus(c, 0)
+}
+
+func updateCronMsgTaskStatus(c *gin.Context, enable int) {
+	var (
+		appG = app.Gin{C: c}
+		req  UpdateCronMsgTaskStatusReq
+	)
+
+	errCode, errMsg := app.BindJsonAndPlayValid(c, &req)
+	if errCode != e.SUCCESS {
+		appG.CResponse(errCode, errMsg, nil)
+		return
+	}
+
+	CronMsgService := cron_msg_service.CronMsgService{
+		ID: req.ID,
+	}
+	if _, err := CronMsgService.GetByID(); err != nil {
+		appG.CResponse(http.StatusBadRequest, "定时消息不存在！", nil)
+		return
+	}
+
+	if err := CronMsgService.Edit(map[string]interface{}{"enable": enable}); err != nil {
+		appG.CResponse(http.StatusBadRequest, "更新定时消息状态失败！", nil)
+		return
+	}
+	msg, _ := CronMsgService.GetByID()
+	cron_msg_service.UpdateCronMsgToCronServer(msg)
+	if enable == 1 {
+		appG.CResponse(http.StatusOK, "启用定时消息成功！", nil)
+		return
+	}
+	appG.CResponse(http.StatusOK, "停用定时消息成功！", nil)
 }
 
 type SendNowCronMsgReq struct {

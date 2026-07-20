@@ -1,9 +1,15 @@
 package models
 
-import "strings"
+import (
+	"errors"
+	"strings"
+
+	"gorm.io/gorm"
+)
 
 type AuthIdentity struct {
 	IDModel
+	SoftDeleteModel
 	UserID        int    `json:"user_id" gorm:"type:integer;not null;index"`
 	Provider      string `json:"provider" gorm:"type:varchar(50);not null;index:idx_provider_sub,unique"`
 	ExternalSub   string `json:"external_sub" gorm:"type:varchar(255);not null;index:idx_provider_sub,unique"`
@@ -20,6 +26,19 @@ func GetAuthIdentityByProviderSub(provider string, sub string) (*AuthIdentity, e
 }
 
 func AddAuthIdentity(identity *AuthIdentity) error {
+	var existing AuthIdentity
+	err := db.Unscoped().Where("provider = ? AND external_sub = ?", identity.Provider, identity.ExternalSub).First(&existing).Error
+	if err == nil {
+		return db.Unscoped().Model(&existing).Updates(map[string]interface{}{
+			"user_id":        identity.UserID,
+			"external_email": identity.ExternalEmail,
+			"external_name":  identity.ExternalName,
+			"deleted_at":     nil,
+		}).Error
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
 	return db.Create(identity).Error
 }
 
@@ -41,7 +60,7 @@ func GetAuthIdentityByID(id uint) (*AuthIdentity, error) {
 }
 
 func DeleteAuthIdentityByID(id uint) error {
-	return db.Where("id = ?", id).Delete(&AuthIdentity{}).Error
+	return db.Unscoped().Where("id = ?", id).Delete(&AuthIdentity{}).Error
 }
 
 func GetAuthIdentityTotal(provider string, text string) (int64, error) {
@@ -65,6 +84,8 @@ func GetAuthIdentities(pageNum int, pageSize int, provider string, text string) 
 	query := db.Table(GetSchema(AuthIdentity{}) + " AS ai").
 		Select("ai.*, u.username AS username").
 		Joins("LEFT JOIN " + GetSchema(Auth{}) + " AS u ON ai.user_id = u.id").
+		Where("ai.deleted_at IS NULL").
+		Where("u.deleted_at IS NULL").
 		Order("ai.id DESC")
 	if strings.TrimSpace(provider) != "" {
 		query = query.Where("ai.provider = ?", strings.TrimSpace(provider))

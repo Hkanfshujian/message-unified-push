@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
-import { toast } from 'vue-sonner'
-import { request } from '@/api/api'
+import { mqApi } from '@/api/mq'
+import { notifyError, notifySuccess, notifyWarning } from '@/util/uiFeedback'
+import { zhCN } from '@/locales/zh-CN'
+
+const messages = zhCN.mqSourceForm
 
 interface Props {
   data?: {
@@ -60,21 +58,16 @@ const typeOptions = [
 
 const handleSubmit = async () => {
   if (!formData.name) {
-    toast.warning('请输入数据源名称')
+    notifyWarning('请输入数据源名称')
     return
   }
   if (!formData.namesrv_addr) {
-    toast.warning('请输入队列地址')
+    notifyWarning('请输入队列地址')
     return
   }
 
   isSubmitting.value = true
   try {
-    const url = isEdit.value
-      ? `/mq-sources/${props.data?.id}/edit`
-      : '/mq-sources/add'
-    
-    const method = isEdit ? 'post' : 'post'
     const payload: any = {
       name: formData.name,
       type: formData.type,
@@ -87,13 +80,13 @@ const handleSubmit = async () => {
       payload.enabled = formData.enabled
     }
 
-    const res = await request[method](url, payload)
+    const res = await (isEdit.value ? mqApi.update(props.data?.id || '', payload) : mqApi.create(payload))
     if (res.data.code === 200) {
-      toast.success(isEdit.value ? '编辑成功' : '新增成功')
+      notifySuccess(isEdit.value ? '编辑成功' : '新增成功')
       emit('success')
     }
   } catch (error: any) {
-    toast.error(error.response?.data?.msg || '操作失败')
+    notifyError(error.response?.data?.msg || '操作失败')
   } finally {
     isSubmitting.value = false
   }
@@ -102,7 +95,7 @@ const handleSubmit = async () => {
 // 测试连接
 const handleTestConnection = async () => {
   if (!formData.namesrv_addr) {
-    toast.warning('请输入队列地址')
+    notifyWarning('请输入队列地址')
     return
   }
 
@@ -110,7 +103,7 @@ const handleTestConnection = async () => {
   testResult.value = null
   
   try {
-    const res = await request.post('/mq-sources/test-config', {
+    const res = await mqApi.testConfig({
       type: formData.type,
       namesrv_addr: formData.namesrv_addr,
       access_key: formData.enableAuth ? formData.access_key : '',
@@ -120,15 +113,15 @@ const handleTestConnection = async () => {
     if (res.data.code === 200) {
       testResult.value = res.data.data
       if (testResult.value?.success) {
-        toast.success('连接测试成功')
+        notifySuccess('连接测试成功')
       } else {
-        toast.error(testResult.value?.error || '连接测试失败')
+        notifyError(testResult.value?.error || '连接测试失败')
       }
     }
   } catch (error: any) {
     const errorMsg = error.response?.data?.msg || '连接测试失败'
     testResult.value = { success: false, error: errorMsg }
-    toast.error(errorMsg)
+    notifyError(errorMsg)
   } finally {
     isTesting.value = false
   }
@@ -136,117 +129,130 @@ const handleTestConnection = async () => {
 </script>
 
 <template>
-  <form @submit.prevent="handleSubmit" class="space-y-4">
-    <div class="space-y-2">
-      <Label for="name">数据源名称 <span class="text-destructive">*</span></Label>
-      <Input
+  <form @submit.prevent="handleSubmit" class="mq-source-form">
+    <div class="mq-source-content">
+    <section class="mq-source-section">
+      <header><div><span>{{ messages.sectionOne }}</span><h4>{{ messages.configuration }}</h4></div><p>{{ messages.configurationDescription }}</p></header>
+      <div class="mq-source-body mq-source-config">
+      <div class="app-form-grid">
+    <div class="app-form-field">
+      <label for="name" class="app-form-label">{{ messages.name }}<span class="text-destructive">{{ messages.required }}</span></label>
+      <el-input
         id="name"
         v-model="formData.name"
-        placeholder="例如：生产环境 RocketMQ"
+        :placeholder="messages.namePlaceholder"
         maxlength="200"
+        clearable
       />
     </div>
 
-    <div class="space-y-2">
-      <Label for="type">队列类型 <span class="text-destructive">*</span></Label>
-      <Select v-model="formData.type">
-        <SelectTrigger>
-          <SelectValue placeholder="选择队列类型" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectGroup>
-            <SelectItem v-for="opt in typeOptions" :key="opt.value" :value="opt.value">
-              {{ opt.label }}
-            </SelectItem>
-          </SelectGroup>
-        </SelectContent>
-      </Select>
+    <div class="app-form-field">
+      <label for="type" class="app-form-label">{{ messages.type }}<span class="text-destructive">{{ messages.required }}</span></label>
+      <el-select v-model="formData.type" class="w-full" :placeholder="messages.typePlaceholder">
+        <el-option v-for="opt in typeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+      </el-select>
     </div>
-
-    <div class="space-y-2">
-      <Label for="namesrv_addr">队列地址 <span class="text-destructive">*</span></Label>
-      <Input
+    </div>
+    <div class="mq-source-subsection">
+      <h5>{{ messages.connectionAndAuth }}</h5>
+    <div class="app-form-field">
+      <label for="namesrv_addr" class="app-form-label">{{ messages.address }}<span class="text-destructive">{{ messages.required }}</span></label>
+      <el-input
         id="namesrv_addr"
         v-model="formData.namesrv_addr"
-        placeholder="例如：127.0.0.1:9876 或 http://mq.example.com:9876"
+        :placeholder="messages.addressPlaceholder"
         maxlength="500"
+        clearable
       />
-      <p class="text-xs text-muted-foreground">
-        RocketMQ NameServer 地址，多个地址用分号分隔
+      <p class="app-form-help">
+        {{ messages.addressHelp }}
       </p>
     </div>
 
-    <div class="space-y-2">
+    <div class="app-form-field app-form-inline-control">
       <div class="flex items-center justify-between">
-        <Label for="enableAuth">开启认证</Label>
-        <Switch id="enableAuth" v-model="formData.enableAuth" />
+        <label for="enableAuth" class="app-form-label">{{ messages.enableAuth }}</label>
+        <el-switch id="enableAuth" v-model="formData.enableAuth" />
       </div>
-      <p class="text-xs text-muted-foreground">
-        如果 RocketMQ 开启了 ACL 鉴权，请启用此项并填写 AK/SK
+      <p class="app-form-help">
+        {{ messages.authHelp }}
       </p>
     </div>
 
-    <template v-if="formData.enableAuth">
-      <div class="space-y-2">
-        <Label for="access_key">Access Key</Label>
-        <Input
+    <div v-if="formData.enableAuth" class="app-form-grid">
+      <div class="app-form-field">
+        <label for="access_key" class="app-form-label">Access Key</label>
+        <el-input
           id="access_key"
           v-model="formData.access_key"
-          placeholder="请输入 Access Key"
+          :placeholder="messages.accessKeyPlaceholder"
           maxlength="200"
+          clearable
         />
       </div>
 
-      <div class="space-y-2">
-        <Label for="secret_key">Secret Key</Label>
-        <Input
+      <div class="app-form-field">
+        <label for="secret_key" class="app-form-label">Secret Key</label>
+        <el-input
           id="secret_key"
           v-model="formData.secret_key"
           type="password"
-          placeholder="请输入 Secret Key"
+          :placeholder="messages.secretKeyPlaceholder"
           maxlength="200"
+          show-password
         />
       </div>
-    </template>
-
-    <div v-if="isEdit" class="space-y-2">
-      <Label for="enabled">启用状态</Label>
-      <Select v-model="formData.enabled">
-        <SelectTrigger>
-          <SelectValue placeholder="选择状态" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem :value="1">启用</SelectItem>
-          <SelectItem :value="0">禁用</SelectItem>
-        </SelectContent>
-      </Select>
     </div>
 
-    <div class="flex justify-end gap-2 pt-4">
-      <Button
-        type="button"
-        variant="outline"
-        :disabled="isTesting || !formData.namesrv_addr"
-        @click="handleTestConnection"
-      >
-        {{ isTesting ? '测试中...' : '测试连接' }}
-      </Button>
-      <Button type="submit" :disabled="isSubmitting">
-        {{ isSubmitting ? '提交中...' : (isEdit ? '保存' : '创建') }}
-      </Button>
+    <div v-if="isEdit" class="app-form-field">
+      <label for="enabled" class="app-form-label">{{ messages.enabledStatus }}</label>
+      <el-select v-model="formData.enabled" class="w-full" :placeholder="messages.statusPlaceholder">
+        <el-option :label="messages.enabled" :value="1" />
+        <el-option :label="messages.disabled" :value="0" />
+      </el-select>
     </div>
 
-    <!-- 测试结果 -->
-    <div
-      v-if="testResult"
-      class="p-3 rounded-md text-sm"
-      :class="testResult.success ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'"
-    >
-      <div class="flex items-center gap-2">
-        <span v-if="testResult.success">✓</span>
-        <span v-else>✗</span>
-        <span>{{ testResult.success ? '连接成功' : testResult.error }}</span>
+      </div>
+      </div>
+    </section>
+
+    <section class="mq-source-section">
+      <header><div><span>{{ messages.sectionTwo }}</span><h4>{{ messages.testFeedback }}</h4></div><p>{{ messages.testDescription }}</p></header>
+      <div class="mq-source-feedback">
+        <el-alert v-if="testResult" :type="testResult.success ? 'success' : 'error'" :title="testResult.success ? (testResult.message || messages.connectionSucceeded) : (testResult.error || messages.connectionFailed)" show-icon :closable="false" />
+        <p v-else>{{ messages.notTested }}</p>
+      </div>
+    </section>
+    </div>
+
+    <div class="mq-source-actions">
+      <span>{{ messages.submitHelp }}</span>
+      <div>
+        <el-button type="button" :disabled="isTesting || !formData.namesrv_addr" @click="handleTestConnection">{{ isTesting ? messages.testing : messages.testConnection }}</el-button>
+        <el-button type="primary" native-type="submit" :loading="isSubmitting">{{ isSubmitting ? messages.submitting : (isEdit ? messages.save : messages.create) }}</el-button>
       </div>
     </div>
   </form>
 </template>
+
+<style scoped>
+.mq-source-form { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
+.mq-source-content { display: grid; grid-auto-rows: max-content; align-content: start; flex: 1; gap: 12px; min-height: 0; padding: 16px; overflow-y: auto; overscroll-behavior: contain; }
+.mq-source-section { overflow: visible; border: 1px solid var(--app-overlay-border); border-radius: 9px; background: var(--app-overlay-surface); }
+.mq-source-section header > div { display: flex; align-items: center; gap: 8px; }
+.mq-source-section h4 { margin: 0; }
+.mq-source-section header p, .mq-source-feedback p { margin: 4px 0 0; color: var(--admin-text-muted); font-size: 11px; line-height: 1.55; }
+.mq-source-section header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 38px; padding: 0 12px; border-bottom: 1px solid var(--app-overlay-border); }
+.mq-source-section header span { color: var(--brand-600); font: 800 10px monospace; }
+.mq-source-section h4 { font-size: 13px; }
+.mq-source-section header p { margin: 0; }
+.mq-source-body, .mq-source-feedback { padding: 14px; }
+.mq-source-config { display: grid; gap: 16px; }
+.mq-source-subsection { display: grid; gap: 14px; padding-top: 14px; border-top: 1px solid color-mix(in srgb, var(--app-overlay-border) 72%, transparent); }
+.mq-source-subsection h5 { margin: 0; color: var(--admin-text-primary); font-size: 12px; font-weight: 700; }
+.mq-source-actions { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 16px; min-height: 58px; padding: 10px 16px; border-top: 1px solid var(--app-overlay-border); background: var(--app-overlay-surface); }
+.mq-source-actions > span { min-width: 0; color: var(--admin-text-muted); font-size: 11px; }
+.mq-source-actions > div { display: flex; flex: none; gap: 8px; }
+@container app-managed-drawer (max-width: 680px) { .mq-source-content { padding: 12px; } .mq-source-section header { align-items: center; flex-direction: row; } .mq-source-section header p { display: none; } .mq-source-actions > span { max-width: 260px; } }
+@container app-managed-drawer (max-width: 460px) { .mq-source-actions { align-items: stretch; flex-direction: column; } .mq-source-actions > span { display: none; } .mq-source-actions > div { width: 100%; } .mq-source-actions :deep(.el-button) { flex: 1; } }
+</style>

@@ -191,8 +191,8 @@ func (st *SendTaskInsService) AddOne(ins models.SendTasksIns) string {
 	return ""
 }
 
-func (st *SendTaskInsService) Delete() error {
-	return models.DeleteMsgTaskIns(st.ID)
+func (st *SendTaskInsService) Archive() error {
+	return models.ArchiveMsgTaskIns(st.ID)
 }
 
 func (st *SendTaskInsService) Update(data map[string]interface{}) error {

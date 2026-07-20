@@ -2,6 +2,7 @@ package models
 
 type LoginLog struct {
 	UUIDModel
+	SoftDeleteModel
 
 	ID       uint   `gorm:"autoIncrement;type:integer;primaryKey" json:"id"`
 	UserID   int    `json:"user_id" gorm:"type:int;index"`
@@ -83,7 +84,7 @@ func DeleteOutDateLoginLogs(keepNum int) (int, error) {
 		return 0, nil
 	}
 
-	deleteResult := db.Where("id < ?", threshold.ID).Delete(&LoginLog{})
+	deleteResult := db.Unscoped().Where("id < ?", threshold.ID).Delete(&LoginLog{})
 	if deleteResult.Error != nil {
 		return 0, deleteResult.Error
 	}

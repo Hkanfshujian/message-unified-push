@@ -20,8 +20,10 @@ var defaultPermissionSeeds = []permissionSeed{
 	{Code: "message:cron:view", Name: "查看定时消息", Type: "menu", Path: "/cronmessages", Sort: 2},
 	{Code: "message:cron:add", Name: "新增定时消息", Type: "action", Method: "POST", Path: "/api/v1/cronmessages/addone", Sort: 3},
 	{Code: "message:cron:edit", Name: "编辑定时消息", Type: "action", Method: "POST", Path: "/api/v1/cronmessages/edit", Sort: 4},
-	{Code: "message:cron:delete", Name: "删除定时消息", Type: "action", Method: "POST", Path: "/api/v1/cronmessages/delete", Sort: 5},
-	{Code: "message:cron:sendnow", Name: "立即发送定时消息", Type: "action", Method: "POST", Path: "/api/v1/cronmessages/sendnow", Sort: 6},
+	{Code: "message:cron:start", Name: "启用定时消息", Type: "action", Method: "POST", Path: "/api/v1/cronmessages/start", Sort: 5},
+	{Code: "message:cron:stop", Name: "停用定时消息", Type: "action", Method: "POST", Path: "/api/v1/cronmessages/stop", Sort: 6},
+	{Code: "message:cron:delete", Name: "删除定时消息", Type: "action", Method: "POST", Path: "/api/v1/cronmessages/delete", Sort: 7},
+	{Code: "message:cron:sendnow", Name: "立即发送定时消息", Type: "action", Method: "POST", Path: "/api/v1/cronmessages/sendnow", Sort: 8},
 	{Code: "message:template:view", Name: "查看模板管理", Type: "menu", Path: "/templates", Sort: 7},
 	{Code: "message:template:add", Name: "新增模板", Type: "action", Method: "POST", Path: "/api/v1/templates/add", Sort: 8},
 	{Code: "message:template:edit", Name: "编辑模板", Type: "action", Method: "POST", Path: "/api/v1/templates/edit", Sort: 9},
@@ -34,7 +36,7 @@ var defaultPermissionSeeds = []permissionSeed{
 	{Code: "message:sendways:delete", Name: "删除渠道", Type: "action", Method: "POST", Path: "/api/v1/sendways/delete", Sort: 16},
 	{Code: "message:sendways:test", Name: "测试渠道", Type: "action", Method: "POST", Path: "/api/v1/sendways/test", Sort: 17},
 	{Code: "message:sendlogs:view", Name: "查看日志管理", Type: "menu", Path: "/sendlogs", Sort: 18},
-	{Code: "system:settings:view", Name: "查看系统设置", Type: "menu", Path: "/settings", Sort: 19},
+	{Code: "system:settings:view", Name: "查看系统设置", Type: "menu", Path: "/system/settings/site", Sort: 19},
 	{Code: "system:settings:edit", Name: "编辑系统设置", Type: "action", Method: "POST", Path: "/api/v1/settings/set", Sort: 20},
 	{Code: "profile:settings:view", Name: "查看个人设置", Type: "menu", Path: "/profile/settings", Sort: 21},
 	{Code: "profile:settings:edit", Name: "编辑个人设置", Type: "action", Method: "POST", Path: "/api/v1/profile/password", Sort: 22},
@@ -63,6 +65,14 @@ var defaultPermissionSeeds = []permissionSeed{
 
 	// 消费日志权限
 	{Code: "data:consume-log:view", Name: "查看消费日志", Type: "menu", Path: "/logs/consume-logs", Sort: 50},
+	{Code: "message:center:view", Name: "查看消息中心", Type: "menu", Path: "/message-center", Sort: 60},
+	{Code: "message:center:read", Name: "标记消息已读", Type: "action", Method: "POST", Path: "/api/v1/message-center/messages/read", Sort: 61},
+	{Code: "message:center:delete", Name: "删除个人消息", Type: "action", Method: "POST", Path: "/api/v1/message-center/messages/delete", Sort: 62},
+	{Code: "message:system:view", Name: "查看系统通知", Type: "menu", Path: "/system/messages", Sort: 63},
+	{Code: "message:system:add", Name: "新增系统通知", Type: "action", Method: "POST", Path: "/api/v1/system-messages/add", Sort: 64},
+	{Code: "message:system:edit", Name: "编辑系统通知", Type: "action", Method: "POST", Path: "/api/v1/system-messages/edit", Sort: 65},
+	{Code: "message:system:delete", Name: "删除系统通知", Type: "action", Method: "POST", Path: "/api/v1/system-messages/delete", Sort: 66},
+	{Code: "message:system:target:view", Name: "查看通知目标范围", Type: "api", Method: "GET", Path: "/api/v1/rbac/roles", Sort: 67},
 }
 
 func InitRbacSeedData() {

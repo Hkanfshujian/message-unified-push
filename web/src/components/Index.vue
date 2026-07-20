@@ -1,56 +1,201 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { CloseOutlined } from '@ant-design/icons-vue'
-import { applyTheme, getStoredTheme } from '@/util/theme'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch, type ComponentPublicInstance } from 'vue'
 import { CONSTANT } from '../constant.js'
 import { LocalStieConfigUtils } from '@/util/localSiteConfig'
 import { usePageState } from '@/store/page_sate.js'
-import { useRbacAuthzStore } from '@/store/rbac_authz'
+import { useAppStore, useRbacStore, useSessionStore } from '@/store'
 import { useRoute, useRouter } from 'vue-router'
 import { request } from '@/api/api'
-import { toast } from 'vue-sonner'
+import { statisticsApi } from '@/api/statistics'
+import { usersApi } from '@/api/users'
+import { confirmAction, notifyError, notifyInfo, notifySuccess } from '@/util/uiFeedback'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import Header from '@/components/layout/Header.vue'
+import DoraIcon from '@/components/ui/DoraIcon.vue'
+import { useResponsiveLayout } from '@/composables/useResponsiveLayout'
+import { useTabWorkspace } from '@/composables/useTabWorkspace'
+import { canCloseTab, findRouteTabMeta, getBasePath, getClosableOtherTabsCount, getClosableTabsToSideCount, type RouteTabMap } from '@/util/tabs'
+import { useMessageCenterStore } from '@/store/message-center'
+import { zhCN } from '@/locales/zh-CN'
+
+const messages = zhCN.appShell
 
 const route = useRoute()
 const router = useRouter()
 const pageState = usePageState()
-const rbacAuthzStore = useRbacAuthzStore()
-const isAuthenticated = ref(Boolean(localStorage.getItem(CONSTANT.STORE_TOKEN_NAME)));
+const appStore = useAppStore()
+const rbacStore = useRbacStore()
+const sessionStore = useSessionStore()
+const messageCenterStore = useMessageCenterStore()
+const isAuthenticated = computed(() => sessionStore.isLogin)
 const userAccount = ref('管理员')
 const siteConfig = ref<any>({})
-const isSidebarCollapsed = ref(false)
 const showTabBar = ref(true)
+const tabScrollRef = ref<HTMLElement | null>(null)
+const tabContextMenuRef = ref<HTMLElement | null>(null)
+const tabItemRefs = new Map<string, HTMLElement>()
+const canScrollTabsLeft = ref(false)
+const canScrollTabsRight = ref(false)
 const dashboardDateStart = ref('')
 const dashboardDateEnd = ref('')
 const isExporting = ref(false)
 
-interface TabItem {
-  title: string
-  path: string
-  closable: boolean
-}
-
 const TABS_STORAGE_KEY = CONSTANT.STORE_OPEN_TABS_NAME || 'message_nest_open_tabs_v1'
 
-const routeTabMap: Record<string, TabItem> = {
-  '/': { title: '数据统计', path: '/', closable: false },
-  '/cronmessages': { title: '定时消息', path: '/cronmessages', closable: true },
-  '/templates': { title: '模板管理', path: '/templates', closable: true },
-  '/sendways': { title: '渠道管理', path: '/sendways', closable: true },
-  '/logs': { title: '日志管理', path: '/logs', closable: true },
-  '/logs/task': { title: '任务日志', path: '/logs/task', closable: true },
-  '/logs/login': { title: '登录日志', path: '/logs/login', closable: true },
-  '/logs/consume': { title: '消费日志', path: '/logs/consume', closable: true },
-  '/system/settings': { title: '系统设置', path: '/system/settings', closable: true },
-  '/profile/settings': { title: '个人设置', path: '/profile/settings', closable: true },
-  '/system/roles': { title: '角色管理', path: '/system/roles', closable: true },
-  '/system/groups': { title: '用户组管理', path: '/system/groups', closable: true },
-  '/system/permissions': { title: '权限管理', path: '/system/permissions', closable: true },
-  '/system/users': { title: '用户管理', path: '/system/users', closable: true },
-  '/system/relations': { title: '授权关系', path: '/system/relations', closable: true },
-  '/data/mq-sources': { title: '消息队列', path: '/data/mq-sources', closable: true },
-  '/message/subscriptions': { title: '订阅消息', path: '/message/subscriptions', closable: true }
+const routeTabMap: RouteTabMap = {
+  '/': { title: '数据统计', path: '/', closable: false, fixed: true, icon: 'chart' },
+  '/cronmessages': { title: '定时消息', path: '/cronmessages', closable: true, icon: 'calendar' },
+  '/templates': { title: '模板管理', path: '/templates', closable: true, icon: 'document' },
+  '/sendways': { title: '渠道管理', path: '/sendways', closable: true, icon: 'activity' },
+  '/logs': { title: '日志管理', path: '/logs', closable: true, icon: 'document' },
+  '/logs/task': { title: '任务日志', path: '/logs/task', closable: true, icon: 'search' },
+  '/logs/login': { title: '登录日志', path: '/logs/login', closable: true, icon: 'login' },
+  '/logs/consume': { title: '消费日志', path: '/logs/consume', closable: true, icon: 'document' },
+  '/system/settings/site': { title: '系统设置', path: '/system/settings/site', closable: true, icon: 'setting' },
+  '/system/messages': { title: '系统通知', path: '/system/messages', closable: true, icon: 'notification' },
+  '/profile/settings': { title: '个人设置', path: '/profile/settings', closable: true, icon: 'user' },
+  '/system/roles': { title: '角色管理', path: '/system/roles', closable: true, icon: 'security' },
+  '/system/groups': { title: '用户组管理', path: '/system/groups', closable: true, icon: 'team' },
+  '/system/permissions': { title: '权限管理', path: '/system/permissions', closable: true, icon: 'key' },
+  '/system/users': { title: '用户管理', path: '/system/users', closable: true, icon: 'user' },
+  '/system/relations': { title: '授权关系', path: '/system/relations', closable: true, icon: 'security' },
+  '/data/mq-sources': { title: '消息队列', path: '/data/mq-sources', closable: true, icon: 'database' },
+  '/message/subscriptions': { title: '订阅消息', path: '/message/subscriptions', closable: true, icon: 'notification' }
+}
+
+const {
+  layoutState,
+  isMobileLayout,
+  isSidebarCollapsed,
+  isMobileSidebarVisible,
+  contentOffset,
+  toggleSidebar,
+  closeMobileSidebar
+} = useResponsiveLayout()
+
+const {
+  tabs,
+  activeTabPath,
+  refreshingPath,
+  tabContextMenu,
+  routerViewKey,
+  ensureTabForRoute,
+  activateTab,
+  closeTab,
+  openTabContextMenu,
+  hideTabContextMenu,
+  closeOtherTabs,
+  closeLeftTabs,
+  closeRightTabs,
+  closeAllTabs,
+  refreshActiveTab,
+  resetTabsToDefault
+} = useTabWorkspace({ route, router, routeTabMap, storageKey: TABS_STORAGE_KEY })
+
+const contextMenuTargetPath = computed(() => tabContextMenu.value.path || activeTabPath.value)
+const canCloseContextTab = computed(() => canCloseTab(tabs.value, contextMenuTargetPath.value))
+const closableLeftCount = computed(() => getClosableTabsToSideCount(tabs.value, contextMenuTargetPath.value, 'left'))
+const closableRightCount = computed(() => getClosableTabsToSideCount(tabs.value, contextMenuTargetPath.value, 'right'))
+const closableOtherCount = computed(() => getClosableOtherTabsCount(tabs.value, contextMenuTargetPath.value))
+const closableTabsCount = computed(() => tabs.value.filter(tab => tab.closable).length)
+
+const updateTabOverflow = () => {
+  const el = tabScrollRef.value
+  if (!el) {
+    canScrollTabsLeft.value = false
+    canScrollTabsRight.value = false
+    return
+  }
+  const maxScrollLeft = Math.max(el.scrollWidth - el.clientWidth, 0)
+  canScrollTabsLeft.value = el.scrollLeft > 1
+  canScrollTabsRight.value = el.scrollLeft < maxScrollLeft - 1
+}
+
+const scrollTabs = (direction: 'left' | 'right') => {
+  const el = tabScrollRef.value
+  if (!el) return
+  el.scrollBy({ left: direction === 'left' ? -240 : 240, behavior: 'smooth' })
+  window.setTimeout(updateTabOverflow, 260)
+}
+
+const setTabItemRef = (path: string, el: Element | ComponentPublicInstance | null) => {
+  if (el instanceof HTMLElement) {
+    tabItemRefs.set(path, el)
+    return
+  }
+  tabItemRefs.delete(path)
+}
+
+const scrollActiveTabIntoView = () => {
+  const activeTabEl = tabItemRefs.get(activeTabPath.value)
+  if (!activeTabEl) return
+  activeTabEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+  window.setTimeout(updateTabOverflow, 260)
+}
+
+const handleWindowResize = () => updateTabOverflow()
+
+const focusAndActivateTab = async (index: number) => {
+  const tab = tabs.value[index]
+  if (!tab) return
+  activateTab(tab)
+  await nextTick()
+  tabItemRefs.get(tab.path)?.focus()
+}
+
+const handleTabKeydown = (event: KeyboardEvent, index: number) => {
+  let targetIndex = index
+  if (event.key === 'ArrowRight') targetIndex = (index + 1) % tabs.value.length
+  else if (event.key === 'ArrowLeft') targetIndex = (index - 1 + tabs.value.length) % tabs.value.length
+  else if (event.key === 'Home') targetIndex = 0
+  else if (event.key === 'End') targetIndex = tabs.value.length - 1
+  else if (event.key === 'F10' && event.shiftKey) {
+    openTabContextMenu(event, tabs.value[index])
+    return
+  } else return
+  event.preventDefault()
+  void focusAndActivateTab(targetIndex)
+}
+
+const closeMobileSidebarWithFocusRestore = async () => {
+  if (!isMobileSidebarVisible.value) return
+  closeMobileSidebar()
+  await nextTick()
+  document.getElementById('sidebar-toggle-button')?.focus()
+}
+
+const handleGlobalEscape = (event: KeyboardEvent) => {
+  if (event.key === 'Escape' && isMobileSidebarVisible.value) closeMobileSidebarWithFocusRestore()
+}
+
+watch(
+  () => tabContextMenu.value.visible,
+  async visible => {
+    if (!visible) return
+    await nextTick()
+    tabContextMenuRef.value?.querySelector<HTMLElement>('button:not(:disabled)')?.focus()
+  }
+)
+
+const closeWorkspaceTab = async (tab: (typeof tabs.value)[number]) => {
+  closeTab(tab)
+  await nextTick()
+  tabItemRefs.get(activeTabPath.value)?.focus()
+}
+
+const closeAllWorkspaceTabs = async () => {
+  closeAllTabs()
+  await nextTick()
+  tabItemRefs.get(activeTabPath.value)?.focus()
+}
+
+const closeContextTab = async () => {
+  const target = tabs.value.find(tab => tab.path === contextMenuTargetPath.value)
+  if (!target || !target.closable) return
+  closeTab(target)
+  hideTabContextMenu()
+  await nextTick()
+  tabItemRefs.get(activeTabPath.value)?.focus()
 }
 
 const routeBreadcrumbMap: Record<string, string[]> = {
@@ -68,84 +213,11 @@ const routeBreadcrumbMap: Record<string, string[]> = {
   '/system/groups': ['系统管理', '用户组管理'],
   '/system/roles': ['系统管理', '角色管理'],
   '/system/permissions': ['系统管理', '权限管理'],
-  '/system/settings': ['系统管理', '系统设置'],
+  '/system/settings/site': ['系统管理', '系统设置'],
+  '/system/messages': ['系统管理', '系统通知'],
   '/system/relations': ['系统管理', '授权关系'],
   '/profile/settings': ['个人设置']
 }
-const createDefaultTabs = (): TabItem[] => {
-  return [{ title: '数据统计', path: '/', closable: false }]
-}
-
-const clearTabsCache = () => {
-  try {
-    localStorage.removeItem(TABS_STORAGE_KEY)
-  } catch {
-  }
-}
-
-const resetTabsToDefault = () => {
-  tabs.value = createDefaultTabs()
-  activeTabPath.value = '/'
-  clearTabsCache()
-}
-
-const normalizeTabs = (rawTabs: TabItem[]) => {
-  const unique = new Map<string, TabItem>()
-  // 固定首页标签始终存在
-  unique.set('/', createDefaultTabs()[0])
-  for (const t of rawTabs) {
-    const base = getBasePath(t.path)
-    const meta = routeTabMap[base]
-    if (!meta) continue
-    unique.set(meta.path, { ...meta })
-  }
-  return Array.from(unique.values())
-}
-
-const loadTabsFromStorage = (): TabItem[] => {
-  try {
-    const raw = localStorage.getItem(TABS_STORAGE_KEY)
-    if (!raw) return createDefaultTabs()
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return createDefaultTabs()
-    return normalizeTabs(parsed)
-  } catch {
-    return createDefaultTabs()
-  }
-}
-
-const tabs = ref<TabItem[]>(loadTabsFromStorage())
-const activeTabPath = ref(route.path)
-
-function getBasePath(path: string) {
-  if (path === '/') return '/'
-  const pure = path.split('?')[0]
-  const parts = pure.split('/').filter(Boolean)
-  
-  // 对于二级及以上路径，返回前两级
-  if (parts.length >= 2) {
-    return `/${parts[0]}/${parts[1]}`
-  }
-  // 只有一级路径
-  if (parts.length === 1) {
-    return `/${parts[0]}`
-  }
-  return '/'
-}
-
-const ensureTabForRoute = (path: string) => {
-  const base = getBasePath(path)
-  const meta = routeTabMap[base]
-  if (!meta) {
-    activeTabPath.value = path
-    return
-  }
-  if (!tabs.value.some(t => t.path === meta.path)) {
-    tabs.value.push({ ...meta })
-  }
-  activeTabPath.value = meta.path
-}
-
 // 主题：明暗模式与跟随系统
 type ThemePreference = 'light' | 'dark' | 'system'
 
@@ -164,7 +236,7 @@ const getInitialThemePreference = (): ThemePreference => {
 const themePreference = ref<ThemePreference>(getInitialThemePreference())
 const theme = ref<'light' | 'dark'>('light')
 
-const applyThemeFromPreference = () => {
+const applyColorModeFromPreference = () => {
   const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
   const effective: 'light' | 'dark' = themePreference.value === 'system'
     ? (systemDark ? 'dark' : 'light')
@@ -184,76 +256,7 @@ const toggleTheme = () => {
   } else {
     themePreference.value = themePreference.value === 'dark' ? 'light' : 'dark'
   }
-  applyThemeFromPreference()
-}
-
-// 切换侧边栏
-const toggleSidebar = () => {
-  isSidebarCollapsed.value = !isSidebarCollapsed.value
-}
-
-const activateTab = (tab: TabItem) => {
-  if (tab.path !== route.path) {
-    router.push(tab.path)
-  }
-}
-
-const closeTab = (tab: TabItem) => {
-  if (!tab.closable) return
-  const index = tabs.value.findIndex(t => t.path === tab.path)
-  if (index === -1) return
-  tabs.value.splice(index, 1)
-  if (activeTabPath.value === tab.path) {
-    const next = tabs.value[index] || tabs.value[index - 1] || tabs.value[0]
-    if (next) {
-      router.push(next.path)
-    }
-  }
-}
-
-const tabContextMenu = ref<{
-  visible: boolean
-  x: number
-  y: number
-  path: string | null
-}>({
-  visible: false,
-  x: 0,
-  y: 0,
-  path: null
-})
-
-const openTabContextMenu = (event: MouseEvent, tab: TabItem) => {
-  event.preventDefault()
-  if (!tab.closable) return
-  tabContextMenu.value = {
-    visible: true,
-    x: event.clientX,
-    y: event.clientY,
-    path: tab.path
-  }
-}
-
-const hideTabContextMenu = () => {
-  tabContextMenu.value.visible = false
-}
-
-const closeOtherTabs = () => {
-  const currentPath = tabContextMenu.value.path
-  if (!currentPath) return
-  tabs.value = tabs.value.filter(t => !t.closable || t.path === currentPath)
-  activeTabPath.value = currentPath
-  hideTabContextMenu()
-}
-
-const closeAllTabs = () => {
-  const fixedTabs = tabs.value.filter(t => !t.closable)
-  const fallback = fixedTabs[0] || { title: '数据统计', path: '/', closable: false }
-  const remaining = fixedTabs.length ? fixedTabs : [fallback]
-  tabs.value = remaining
-  activeTabPath.value = remaining[0].path
-  router.push(remaining[0].path)
-  hideTabContextMenu()
+  applyColorModeFromPreference()
 }
 
 // 从JWT中解析用户名
@@ -269,9 +272,8 @@ const parseJwtUsername = (token: string): string => {
 
 // 更新用户账号信息
 const updateUserAccount = () => {
-  const token = localStorage.getItem(CONSTANT.STORE_TOKEN_NAME)
-  if (token) {
-    userAccount.value = parseJwtUsername(token)
+  if (sessionStore.token) {
+    userAccount.value = parseJwtUsername(sessionStore.token)
   } else {
     userAccount.value = '管理员'
   }
@@ -300,7 +302,7 @@ const updateFavicon = (logoValue: string) => {
     return
   }
   link.href = resolveLogoPath(logoValue)
-  link.type = 'image/png'
+  link.type = logoValue.toLowerCase().includes('.svg') ? 'image/svg+xml' : 'image/png'
 }
 
 // 获取本地配置
@@ -313,6 +315,7 @@ const getLocalConfig = () => {
       if (pageState.setSiteConfigData) {
         pageState.setSiteConfigData(localConfig)
       }
+      appStore.setSiteConfig(localConfig)
       // 更新网站标题
       if (localConfig.title) {
         document.title = localConfig.title
@@ -321,11 +324,6 @@ const getLocalConfig = () => {
       if (localConfig.logo) {
         updateFavicon(localConfig.logo)
       }
-      // 更新主题色
-      if (localConfig.theme_color) {
-        applyTheme(localConfig.theme_color)
-      }
-
     }
   } catch (error) {
     console.error('获取本地配置失败:', error)
@@ -342,6 +340,7 @@ const getLatestConfig = async () => {
       if (pageState.setSiteConfigData) {
         pageState.setSiteConfigData(latestConfig)
       }
+      appStore.setSiteConfig(latestConfig)
       // 更新网站标题
       if (latestConfig.title) {
         document.title = latestConfig.title
@@ -350,11 +349,6 @@ const getLatestConfig = async () => {
       if (latestConfig.logo) {
         updateFavicon(latestConfig.logo)
       }
-      // 更新主题色
-      if (latestConfig.theme_color) {
-        applyTheme(latestConfig.theme_color)
-      }
-
     }
   } catch (error) {
     console.error('获取最新配置失败:', error)
@@ -366,18 +360,11 @@ const getLatestConfig = async () => {
 const loadUserThemePreference = async () => {
   if (!isAuthenticated.value) return
   try {
-    const rsp = await request.get('/profile/theme')
+    const rsp = await usersApi.getTheme()
     const data = rsp?.data?.data || {}
-    if (data.theme_color) {
-      applyTheme(data.theme_color)
-    }
     if (data.theme_mode === 'light' || data.theme_mode === 'dark' || data.theme_mode === 'system') {
       themePreference.value = data.theme_mode
-      applyThemeFromPreference()
-    }
-    // 应用侧边栏背景色
-    if (data.sidebar_bg) {
-      document.documentElement.style.setProperty('--sidebar-bg', data.sidebar_bg)
+      applyColorModeFromPreference()
     }
   } catch {
   }
@@ -385,12 +372,15 @@ const loadUserThemePreference = async () => {
 
 // 退出登录
 const logout = async () => {
-  localStorage.removeItem(CONSTANT.STORE_TOKEN_NAME)
-  rbacAuthzStore.clearAuthzData()
+  try {
+    await confirmAction('退出后将清空当前会话和工作区标签，确认退出登录吗？', '退出登录')
+  } catch {
+    return
+  }
+  rbacStore.clear()
+  messageCenterStore.resetState()
   resetTabsToDefault()
-  isAuthenticated.value = false
-  localStorage.removeItem(CONSTANT.STORE_AUTH_SOURCE_NAME)
-  router.push('/login')
+  await sessionStore.logout()
 }
 
 const openProfileSettings = () => {
@@ -409,11 +399,11 @@ onMounted(async () => {
   // 初始化主题并监听系统主题变化
   // 注意：如果用户已登录，主题设置会在 loadUserThemePreference 中加载
   // 这里先应用默认/本地设置，避免无主题状态
-  applyThemeFromPreference()
+  applyColorModeFromPreference()
   try {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
     const handleSystemChange = () => {
-      if (themePreference.value === 'system') applyThemeFromPreference()
+      if (themePreference.value === 'system') applyColorModeFromPreference()
     }
     // 新浏览器
     if (media.addEventListener) {
@@ -427,24 +417,25 @@ onMounted(async () => {
   // 初始化用户账号信息
   updateUserAccount();
 
+  await nextTick()
+  updateTabOverflow()
+  window.addEventListener('resize', handleWindowResize)
+  window.addEventListener('keydown', handleGlobalEscape)
+
   // 初始化配置信息
   getLocalConfig();
 
-  // 如果已认证，获取最新配置和用户个性设置
+  // 如果已认证，获取最新配置和用户显示模式
   if (isAuthenticated.value) {
-    // 先加载用户个性设置（包含主题色），避免闪烁
     await loadUserThemePreference()
     getLatestConfig();
-    rbacAuthzStore.fetchCurrentUserPermissions({ silent: true })
-  } else {
-    // 未登录状态下应用本地存储的主题色
-    applyTheme(getStoredTheme())
+    rbacStore.loadCurrentUserPermissions().catch(() => undefined)
   }
 
   // 定期检查token状态
   const checkAuth = () => {
     const wasAuthenticated = isAuthenticated.value;
-    isAuthenticated.value = Boolean(localStorage.getItem(CONSTANT.STORE_TOKEN_NAME));
+    sessionStore.syncFromStorage();
     // 如果认证状态发生变化，更新用户账号信息和配置
     if (wasAuthenticated !== isAuthenticated.value) {
       updateUserAccount();
@@ -452,11 +443,11 @@ onMounted(async () => {
         // 用户刚登录，获取最新配置
         getLatestConfig();
         loadUserThemePreference();
-        rbacAuthzStore.fetchCurrentUserPermissions({ silent: true })
+        rbacStore.loadCurrentUserPermissions().catch(() => undefined)
       } else {
         // 用户退出登录，使用本地配置
         getLocalConfig();
-        rbacAuthzStore.clearAuthzData()
+        rbacStore.clear()
         resetTabsToDefault()
       }
     }
@@ -473,15 +464,10 @@ onMounted(async () => {
   };
 });
 
-watch(
-  tabs,
-  (newTabs) => {
-    try {
-      localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(newTabs))
-    } catch { }
-  },
-  { deep: true }
-)
+onUnmounted(() => {
+  window.removeEventListener('resize', handleWindowResize)
+  window.removeEventListener('keydown', handleGlobalEscape)
+})
 
 // 计算属性：站点标题
 const siteTitle = computed(() => {
@@ -492,12 +478,16 @@ const siteSlogan = computed(() => {
   return siteConfig.value?.slogan || ''
 })
 
+const siteLogo = computed(() => {
+  return resolveLogoPath(siteConfig.value?.logo || '/dora-logo.svg')
+})
+
 const siteSloganInitialEnabled = computed(() => {
   return String(siteConfig.value?.slogan_initial_enabled || 'false') === 'true'
 })
 
 const currentBreadcrumb = computed(() => {
-  const base = getBasePath(route.path)
+  const base = findRouteTabMeta(route.path, routeTabMap)?.path || getBasePath(route.path)
   const segments = routeBreadcrumbMap[base]
   if (segments && segments.length) {
     return segments.join(' / ')
@@ -541,6 +531,7 @@ const currentHeaderActions = computed(() => {
 watch(
   () => route.path,
   (path) => {
+    appStore.setActivePath(path)
     ensureTabForRoute(path)
     hydrateHeaderDateRangeFromRoute()
   },
@@ -744,9 +735,9 @@ const exportDashboardCsv = async () => {
   const backendDone = await tryBackendCsvExport('/statistic/export', { days }, fileName)
   if (backendDone) return
   const [basicRsp, trendRsp, channelRsp] = await Promise.all([
-    request.get('/statistic?type=basic'),
-    request.get(`/statistic?type=trend&days=${days}`),
-    request.get('/statistic?type=channels')
+    statisticsApi.basic(),
+    statisticsApi.trend(days),
+    statisticsApi.channels()
   ])
 
   if (basicRsp?.data?.code !== 200 || trendRsp?.data?.code !== 200 || channelRsp?.data?.code !== 200) {
@@ -1080,53 +1071,53 @@ const handleHeaderDownload = async () => {
   try {
     if (base === '/') {
       await exportDashboardCsv()
-      toast.success('统计报表导出成功')
+      notifySuccess('统计报表导出成功')
       return
     }
     if (base === '/sendlogs' || base === '/logs' || base === '/logs/task') {
       await exportSendLogsCsv()
-      toast.success('日志导出成功')
+      notifySuccess('日志导出成功')
       return
     }
     if (base === '/logs/login') {
       await exportLoginLogsCsv()
-      toast.success('登录日志导出成功')
+      notifySuccess('登录日志导出成功')
       return
     }
     if (base === '/logs/consume') {
       await exportConsumeLogsCsv()
-      toast.success('消费日志导出成功')
+      notifySuccess('消费日志导出成功')
       return
     }
     if (base === '/data/mq-sources') {
       await exportMqSourcesCsv()
-      toast.success('数据源导出成功')
+      notifySuccess('数据源导出成功')
       return
     }
     if (base === '/cronmessages') {
       await exportCronMessagesCsv()
-      toast.success('定时任务导出成功')
+      notifySuccess('定时任务导出成功')
       return
     }
     if (base === '/message/subscriptions') {
       await exportSubscriptionsCsv()
-      toast.success('订阅导出成功')
+      notifySuccess('订阅导出成功')
       return
     }
     if (base === '/templates') {
       await exportTemplatesCsv()
-      toast.success('模板导出成功')
+      notifySuccess('模板导出成功')
       return
     }
     if (base === '/sendways') {
       await exportSendWaysCsv()
-      toast.success('渠道导出成功')
+      notifySuccess('渠道导出成功')
       return
     }
-    toast.info('当前页面暂不支持导出')
+    notifyInfo('当前页面暂不支持导出')
   } catch (error) {
     console.error('导出失败:', error)
-    toast.error('导出失败，请稍后重试')
+    notifyError('导出失败，请稍后重试')
   } finally {
     isExporting.value = false
   }
@@ -1135,7 +1126,18 @@ const handleHeaderDownload = async () => {
 void syncHeaderDateRangeToRoute
 void handleHeaderDownload
 
-const layoutTopOffset = computed(() => (showTabBar.value ? '160px' : '112px'))
+const layoutTabbarHeight = computed(() => (showTabBar.value ? 'var(--dora-tabbar-height)' : '0px'))
+const contentMarginLeft = computed(() => `${contentOffset.value}px`)
+
+watch(
+  () => [tabs.value.length, activeTabPath.value, layoutState.value.viewportWidth],
+  async () => {
+    await nextTick()
+    scrollActiveTabIntoView()
+    updateTabOverflow()
+  },
+  { flush: 'post' }
+)
 </script>
 
 
@@ -1143,94 +1145,174 @@ const layoutTopOffset = computed(() => (showTabBar.value ? '160px' : '112px'))
   <router-view v-if="!isAuthenticated || route.path == '/login' || route.path == 'login'"></router-view>
 
   <div class="layout" v-else>
+    <div
+      v-if="isMobileSidebarVisible"
+      class="mobile-sidebar-mask"
+      @click="closeMobileSidebarWithFocusRestore"
+    />
     <Sidebar
       :is-collapsed="isSidebarCollapsed"
+      :is-mobile="isMobileLayout"
+      :is-mobile-visible="isMobileSidebarVisible"
       :site-title="siteTitle"
       :site-slogan="siteSlogan"
+      :site-logo="siteLogo"
       :site-slogan-initial-enabled="siteSloganInitialEnabled"
       :user-account="userAccount"
-      @toggle-collapse="toggleSidebar"
-      @logout="logout"
+      @navigate="closeMobileSidebarWithFocusRestore"
     />
     <main
-      class="content"
-      :class="isSidebarCollapsed ? 'ml-16' : 'ml-[200px]'"
+      class="content dora-no-horizontal-overflow"
+      :style="{ marginLeft: contentMarginLeft }"
+      :data-device="layoutState.device"
     >
       <Header
         :user-account="userAccount"
         :theme="theme"
-        :theme-preference="themePreference"
         :breadcrumb="currentBreadcrumb"
         :is-sidebar-collapsed="isSidebarCollapsed"
+        :is-mobile="isMobileLayout"
         @toggle-theme="toggleTheme"
         @toggle-sidebar="toggleSidebar"
         @open-profile-settings="openProfileSettings"
         @logout="logout"
       />
-      <div v-if="showTabBar" class="border-b weak-divider bg-background/95 h-12 flex items-center px-3 gap-2">
-        <div class="flex-1 overflow-x-auto">
-          <div class="flex items-center h-10 gap-1.5">
+      <div v-if="showTabBar" class="admin-tabbar flex items-center px-4 gap-2">
+        <button
+          type="button"
+          class="admin-tab-scroll-button inline-flex h-8 w-8 items-center justify-center"
+          :disabled="!canScrollTabsLeft"
+          :aria-label="messages.scrollTabsLeft"
+          @click="scrollTabs('left')"
+        >
+          <DoraIcon name="chevron-left" :size="15" />
+        </button>
+        <div ref="tabScrollRef" class="admin-tab-scroll flex-1 overflow-x-auto" @scroll="updateTabOverflow">
+          <div class="admin-tab-list flex items-center h-full gap-0 pr-3" role="tablist" :aria-label="messages.workspaceTabs">
             <div
-              v-for="tab in tabs"
+              v-for="(tab, tabIndex) in tabs"
               :key="tab.path"
               class="relative"
             >
               <div
-                class="tab-item relative inline-flex items-center h-9 px-4 text-[14px] cursor-pointer select-none rounded-[8px] border-x border-y-0 transition-[background-color,box-shadow,color,transform,border-color] duration-200 ease-out hover:-translate-y-[1px]"
-                :class="tab.path === activeTabPath
-                  ? 'bg-white text-[#24314d] border-x-[#d7e4fb] shadow-[0_4px_12px_rgba(31,71,142,0.12)]'
-                  : 'bg-transparent text-muted-foreground border-x-[#e8eef9] hover:bg-muted/40 hover:text-foreground hover:border-x-[#dbe6fb]'"
+                :ref="(el) => setTabItemRef(tab.path, el)"
+                class="tab-item admin-tab-item relative inline-flex items-center justify-center h-8 px-3 text-[14px] cursor-pointer select-none whitespace-nowrap transition-[background-color,border-color,color] duration-200 ease-out"
+                :class="[
+                  tab.path === activeTabPath
+                    ? 'admin-tab-item-active'
+                    : 'admin-tab-item-idle',
+                  tab.closable ? 'admin-tab-item-closable' : ''
+                ]"
+                role="tab"
+                :id="`workspace-tab-${tabIndex}`"
+                :tabindex="tab.path === activeTabPath ? 0 : -1"
+                :aria-controls="'workspace-tabpanel'"
+                :aria-selected="tab.path === activeTabPath"
+                :aria-label="`${tab.title}${tab.fixed ? messages.fixedTabSuffix : ''}${messages.tabActionsSuffix}`"
                 @click="activateTab(tab)"
+                @keydown.enter.prevent="activateTab(tab)"
+                @keydown.space.prevent="activateTab(tab)"
+                @keydown="handleTabKeydown($event, tabIndex)"
                 @contextmenu="openTabContextMenu($event, tab)"
               >
+                <DoraIcon v-if="tab.icon" :name="tab.icon" :size="14" class="admin-tab-page-icon" />
+                <span v-else-if="tab.fixed" class="admin-tab-pin" aria-hidden="true" />
                 <span class="truncate max-w-[150px]">{{ tab.title }}</span>
+                <span v-if="refreshingPath === tab.path" class="admin-tab-refreshing" :aria-label="messages.refreshing" />
                 <button
                   v-if="tab.closable"
-                  class="ml-2 inline-flex h-4 w-4 items-center justify-center rounded-sm text-[#8b98b6] hover:bg-[#eef3ff] hover:text-red-500 transition-colors duration-[var(--motion-fast)]"
-                  aria-label="关闭标签"
-                  @click.stop="closeTab(tab)"
+                  type="button"
+                  class="admin-tab-close inline-flex items-center justify-center overflow-hidden text-[var(--admin-text-muted)]"
+                  :aria-label="messages.closeTab"
+                  @click.stop="closeWorkspaceTab(tab)"
                 >
-                    <CloseOutlined class="text-[12px]" />
+                  <DoraIcon name="close-slash" :size="16" />
                 </button>
-                <span
-                  class="pointer-events-none absolute left-1.5 right-1.5 bottom-0 h-[2.5px] rounded-full bg-[linear-gradient(90deg,rgba(79,141,255,0)_0%,rgba(79,141,255,0.72)_22%,rgba(64,129,248,1)_50%,rgba(79,141,255,0.72)_78%,rgba(79,141,255,0)_100%)] origin-center transition-all duration-200 ease-out"
-                  :class="tab.path === activeTabPath ? 'opacity-100 scale-x-100' : 'opacity-0 scale-x-0'"
-                />
               </div>
             </div>
           </div>
         </div>
         <button
-          class="ml-2 h-8 px-3 rounded-md text-[13px] border border-[#e5ecf9] bg-white text-[#5e6e90] hover:text-red-500 hover:border-red-200 hover:bg-red-50/40 disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:text-[#5e6e90] disabled:hover:border-[#e5ecf9] disabled:hover:bg-white whitespace-nowrap transition-colors duration-[var(--motion-fast)]"
-          :disabled="tabs.length <= 1"
-          @click="closeAllTabs"
+          type="button"
+          class="admin-tab-scroll-button inline-flex h-8 w-8 items-center justify-center"
+          :disabled="!canScrollTabsRight"
+          :aria-label="messages.scrollTabsRight"
+          @click="scrollTabs('right')"
         >
-          关闭全部标签
+          <DoraIcon name="chevron-right" :size="15" />
+        </button>
+        <button
+          class="admin-tab-close-all h-8 px-3 text-[13px] disabled:opacity-45 disabled:cursor-not-allowed whitespace-nowrap transition-colors duration-[var(--motion-fast)]"
+          :disabled="closableTabsCount === 0"
+          @click="closeAllWorkspaceTabs"
+        >
+          {{ messages.closeAllTabs }}
         </button>
       </div>
       <div
         v-if="tabContextMenu.visible"
-        class="fixed z-50 w-32 rounded-md bg-white shadow-[0_10px_26px_rgba(15,42,91,0.18)] border border-[#e6edf9] text-sm py-1"
+        ref="tabContextMenuRef"
+        class="admin-context-menu admin-workspace-menu fixed z-50 w-40 rounded-md text-sm py-1"
         :style="{ left: tabContextMenu.x + 'px', top: tabContextMenu.y + 'px' }"
+        role="menu"
         @click.stop
+        @keydown.esc="hideTabContextMenu"
       >
         <button
-          class="w-full text-left px-3 py-1.5 hover:bg-[#f3f7ff]"
-          @click="closeOtherTabs"
+          class="admin-workspace-menu-item"
+          role="menuitem"
+          @click="refreshActiveTab"
         >
-          关闭其他
+          {{ messages.refreshCurrent }}
         </button>
         <button
-          class="w-full text-left px-3 py-1.5 hover:bg-[#f3f7ff]"
-          @click="closeAllTabs"
+          class="admin-workspace-menu-item"
+          role="menuitem"
+          :disabled="closableLeftCount === 0"
+          @click="closeLeftTabs"
         >
-          关闭全部
+          {{ messages.closeLeft }}
+        </button>
+        <button
+          class="admin-workspace-menu-item"
+          role="menuitem"
+          :disabled="closableRightCount === 0"
+          @click="closeRightTabs"
+        >
+          {{ messages.closeRight }}
+        </button>
+        <button
+          class="admin-workspace-menu-item"
+          role="menuitem"
+          :disabled="closableOtherCount === 0"
+          @click="closeOtherTabs"
+        >
+          {{ messages.closeOthers }}
+        </button>
+        <button
+          class="admin-workspace-menu-item danger"
+          role="menuitem"
+          :disabled="!canCloseContextTab"
+          @click="closeContextTab"
+        >
+          {{ messages.closeCurrent }}
         </button>
       </div>
-      <div class="page-container" :style="{ '--layout-tabbar-height': layoutTopOffset }">
-        <div class="main-card">
-          <router-view :key="route.fullPath" @click="hideTabContextMenu"></router-view>
+      <div class="admin-shell-body">
+        <div class="page-container" :style="{ '--layout-tabbar-height': layoutTabbarHeight }">
+          <div
+            id="workspace-tabpanel"
+            class="main-card dora-contained-scroll"
+            role="tabpanel"
+            tabindex="0"
+            :aria-labelledby="`workspace-tab-${Math.max(tabs.findIndex(tab => tab.path === activeTabPath), 0)}`"
+          >
+            <router-view :key="routerViewKey" @click="hideTabContextMenu"></router-view>
+          </div>
         </div>
+        <footer class="admin-shell-footer">
+          Copyright MIT © 2026 {{ siteTitle || messages.defaultSiteTitle }}
+        </footer>
       </div>
     </main>
   </div>

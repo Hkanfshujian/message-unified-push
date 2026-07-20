@@ -1,38 +1,42 @@
 <script setup lang="ts">
-import type { SwitchRootEmits, SwitchRootProps } from "reka-ui"
 import type { HTMLAttributes } from "vue"
-import { reactiveOmit } from "@vueuse/core"
-import {
-  SwitchRoot,
-
-  SwitchThumb,
-  useForwardPropsEmits,
-} from "reka-ui"
 import { cn } from "@/lib/utils"
 
-const props = defineProps<SwitchRootProps & { class?: HTMLAttributes["class"] }>()
+const props = defineProps<{
+  modelValue?: boolean
+  defaultValue?: boolean
+  disabled?: boolean
+  id?: string
+  class?: HTMLAttributes["class"]
+}>()
 
-const emits = defineEmits<SwitchRootEmits>()
-
-const delegatedProps = reactiveOmit(props, "class")
-
-const forwarded = useForwardPropsEmits(delegatedProps, emits)
+const emit = defineEmits<{
+  (e: 'update:modelValue', value: boolean): void
+}>()
 </script>
 
 <template>
-  <SwitchRoot
+  <button
     data-slot="switch"
-    v-bind="forwarded"
+    type="button"
+    role="switch"
+    :id="id"
+    :aria-checked="modelValue || false"
+    :disabled="disabled"
+    :data-state="modelValue ? 'checked' : 'unchecked'"
     :class="cn(
-      'peer data-[state=checked]:bg-primary data-[state=unchecked]:bg-input focus-visible:border-ring focus-visible:ring-ring/50 dark:data-[state=unchecked]:bg-input/80 inline-flex h-[1.15rem] w-8 shrink-0 items-center rounded-full border border-transparent shadow-xs transition-all outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50',
+      'peer inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-all outline-none focus-visible:ring-4 focus-visible:ring-brand-200/35 disabled:cursor-not-allowed disabled:opacity-50',
+      modelValue ? 'border-white/40 bg-[linear-gradient(135deg,var(--brand-600),#0ea5e9)] shadow-[0_10px_20px_rgba(37,99,235,0.22),inset_0_1px_0_rgba(255,255,255,0.28)]' : 'border-[var(--glass-inset-border)] bg-[var(--glass-inset-bg)] shadow-[var(--glass-shadow-inset)]',
       props.class,
     )"
+    @click="emit('update:modelValue', !modelValue)"
   >
-    <SwitchThumb
+    <span
       data-slot="switch-thumb"
-      :class="cn('bg-background dark:data-[state=unchecked]:bg-foreground dark:data-[state=checked]:bg-primary-foreground pointer-events-none block size-4 rounded-full ring-0 transition-transform data-[state=checked]:translate-x-[calc(100%-2px)] data-[state=unchecked]:translate-x-0')"
+      :data-state="modelValue ? 'checked' : 'unchecked'"
+      :class="cn('pointer-events-none block size-4 rounded-full ring-0 transition-transform shadow-[0_4px_10px_rgba(15,23,42,0.18)]', modelValue ? 'translate-x-[calc(100%+1px)] bg-white' : 'translate-x-0.5 bg-[var(--glass-panel-bg)]')"
     >
       <slot name="thumb" />
-    </SwitchThumb>
-  </SwitchRoot>
+    </span>
+  </button>
 </template>

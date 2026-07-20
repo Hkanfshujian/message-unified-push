@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"ops-message-unified-push/models"
-	"ops-message-unified-push/pkg/util"
 	"net/http"
 	"net/url"
+	"ops-message-unified-push/models"
+	"ops-message-unified-push/pkg/util"
 	"regexp"
 	"strings"
 	"sync"
@@ -21,10 +21,10 @@ import (
 
 // CasdoorUser Casdoor 返回的用户信息
 type CasdoorUser struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Email    string `json:"email"`
-	Avatar   string `json:"avatar"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Email       string `json:"email"`
+	Avatar      string `json:"avatar"`
 	Displayname string `json:"displayName"`
 }
 
@@ -50,6 +50,9 @@ type IDTokenStore struct {
 	mu     sync.RWMutex
 	tokens map[uint]string // userID -> idToken
 }
+
+// SoftDeleteModel is not applicable to short-lived process memory. Session
+// tokens are evicted on logout and never represent persisted domain records.
 
 var (
 	globalIDTokenStore *IDTokenStore
@@ -81,11 +84,17 @@ func (s *IDTokenStore) Get(userID uint) (string, bool) {
 	return token, ok
 }
 
-// Delete 删除用户的 id_token
-func (s *IDTokenStore) Delete(userID uint) {
+// Remove clears an in-memory session token without mutating persistent users.
+func (s *IDTokenStore) Remove(userID uint) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.tokens, userID)
+	next := make(map[uint]string, len(s.tokens))
+	for storedUserID, token := range s.tokens {
+		if storedUserID != userID {
+			next[storedUserID] = token
+		}
+	}
+	s.tokens = next
 }
 
 // CasdoorService Casdoor 认证服务
@@ -196,8 +205,8 @@ func (s *CasdoorService) GetUserInfo(ctx context.Context, accessToken string) (*
 	return &result.Data, nil
 }
 
-// HandleCallback 处理回调，返回本地 token 和用户信息
-func (s *CasdoorService) HandleCallback(ctx context.Context, code string) (localToken string, user *models.Auth, err error) {
+// CompleteLogin exchanges the authorization response for a local session.
+func (s *CasdoorService) CompleteLogin(ctx context.Context, code string) (localToken string, user *models.Auth, err error) {
 	logrus.Info("[Casdoor] 开始处理回调")
 
 	// 1. 用授权码换取 Token
@@ -322,7 +331,7 @@ func (s *CasdoorService) BuildLogoutURL(userID uint, redirectURI string) string 
 	}
 
 	// 删除存储的 id_token
-	GetIDTokenStore().Delete(userID)
+	GetIDTokenStore().Remove(userID)
 
 	params := url.Values{}
 	params.Set("id_token_hint", idToken)
